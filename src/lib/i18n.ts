@@ -11,4 +11,4 @@ Object.assign(messages.en, { updateItem: 'Update item' })
 Object.assign(messages['zh-TW'], { updateItem: '更新餐點' })
 
 export type Copy = (typeof messages)[Locale] & { updateItem: string }
-export function t(locale: Locale = 'vi'): Copy { return messages[locale] }
+export function t(locale: Locale = 'vi'): Copy { return messages[locale] as Copy }
