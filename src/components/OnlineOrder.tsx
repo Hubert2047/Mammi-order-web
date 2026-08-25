@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { type Locale, t } from '@/lib/i18n'
 
@@ -10,6 +10,10 @@ type Addon = Choice & { priceExtra: number }
 type MenuItem = { id: string; category: { id: string; names: Text }; names: Text; description: Text; price: number; variants: Choice[]; noteOptions: Choice[]; addons: Addon[] }
 type CartLine = { key: string; itemId: string; quantity: number; variant?: string; noteOptions: string[]; addonIds: string[]; note?: string }
 type OrderType = 'dine_in' | 'takeaway'
+
+declare global {
+  interface Window { turnstile?: { render: (element: HTMLElement, options: { sitekey: string; action: string; callback: (token: string) => void; 'expired-callback': () => void; 'error-callback': () => void }) => string; remove: (widgetId: string) => void } }
+}
 
 const localeStorageKey = 'mammi-order-locale-v2'
 const createKey = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
@@ -44,6 +48,10 @@ export default function OnlineOrder() {
   const [failed, setFailed] = useState(false)
   const [sending, setSending] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [turnstileReady, setTurnstileReady] = useState(false)
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [turnstileError, setTurnstileError] = useState(false)
+  const widgetId = useRef<string | null>(null)
   const [completed, setCompleted] = useState<number | null>(null)
   const copy = t(locale)
   const base = (process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')
@@ -82,15 +90,30 @@ export default function OnlineOrder() {
     const lines = cart.map(({ key, ...line }) => line)
     void fetch(`${base}/api/public/carts/${cartToken}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lines, type }) })
   }, [cart, cartToken, type, loading, completed])
+  useEffect(() => {
+    if (!checkoutOpen) return
+    if (window.turnstile) { setTurnstileReady(true); return }
+    const timer = window.setInterval(() => { if (window.turnstile) { setTurnstileReady(true); window.clearInterval(timer) } }, 100)
+    return () => window.clearInterval(timer)
+  }, [checkoutOpen])
+  useEffect(() => {
+    if (!checkoutOpen || !turnstileReady || !process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || !window.turnstile) return
+    const host = document.createElement('div')
+    host.className = 'turnstile-host'
+    document.querySelector('.checkout-card')?.append(host)
+    if (!host.parentElement) return
+    widgetId.current = window.turnstile.render(host, { sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY, action: 'online_order', callback: setTurnstileToken, 'expired-callback': () => setTurnstileToken(''), 'error-callback': () => { setTurnstileToken(''); setTurnstileError(true) } })
+    return () => { if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current); host.remove(); widgetId.current = null; setTurnstileToken(''); setTurnstileError(false) }
+  }, [checkoutOpen, turnstileReady])
 
   const openItem = (item: MenuItem, line?: CartLine) => { setSelected(item); setQuantity(line?.quantity || 1); setVariant(line?.variant || item.variants[0]?.id || ''); setNoteOptions(line?.noteOptions || []); setAddonIds(line?.addonIds || []); setNote(line?.note || '') }
   const addToCart = () => { if (!selected) return; setCart((old) => [...old, { key: createKey(), itemId: selected.id, quantity, variant: variant || undefined, noteOptions, addonIds, note: note.trim() || undefined }]); setSelected(null) }
   const updateQuantity = (key: string, next: number) => setCart((old) => next < 1 ? old.filter((line) => line.key !== key) : old.map((line) => line.key === key ? { ...line, quantity: next } : line))
   const confirm = async () => {
-    if (!cartToken || !cart.length || !customer.phone.trim() || sending) return
+    if (!cartToken || !cart.length || !customer.phone.trim() || !turnstileToken || sending) return
     setSending(true)
     try {
-      const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customer }) })
+      const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customer, turnstileToken }) })
       if (!response.ok) throw new Error()
       setCompleted((await response.json()).data.number); setCart([]); setCheckoutOpen(false)
     } catch { setFailed(true) } finally { setSending(false) }

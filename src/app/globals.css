@@ -42,5 +42,6 @@
 .checkout-card > label { display:grid; gap:7px; margin:18px 0; color:#111827; font-weight:800; }
 .checkout-card input,.checkout-card textarea { width:100%; border:1px solid #d1d5db; border-radius:12px; padding:11px 12px; background:#fff; font-weight:400; }
 .checkout-card textarea { min-height:80px; resize:vertical; }
+.turnstile-host { display:flex; justify-content:center; min-height:65px; margin:14px 0; }
 @media (max-width:900px) { .online-layout { grid-template-columns:1fr; }.online-cart { position:static; }.online-cart .cart-lines { max-height:240px; } }
 @media (max-width:649px) { .online-shell { padding-top:20px; }.online-header { padding-bottom:20px; }.online-header h1 { font-size:2rem; }.online-layout { gap:20px; }.online-cart { border-radius:20px; } }
