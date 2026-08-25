@@ -33,6 +33,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const [sessionUnavailable, setSessionUnavailable] = useState(false)
   const [sending, setSending] = useState(false)
   const [completed, setCompleted] = useState<CompletedOrder | null>(null)
   const [cartOpen, setCartOpen] = useState(false)
@@ -49,7 +50,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
   const load = async () => {
     try {
       const response = await fetch(`${base}/api/public/qr/${encodeURIComponent(qrToken)}`)
-      if (!response.ok) throw new Error('QR menu unavailable')
+      if (!response.ok) {
+        const error = await response.json().catch(() => null)
+        if (error?.code === 'SESSION_NOT_ACTIVE' || error?.code === 'SESSION_EXPIRED') { setSessionUnavailable(true); setFailed(false); return }
+        throw new Error('QR menu unavailable')
+      }
       const payload = (await response.json()).data
       setItems(payload.items)
       setTable(payload.table.code)
@@ -73,6 +78,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         window.localStorage.setItem(storageKey, savedCartToken)
       }
       setCartToken(savedCartToken)
+      setSessionUnavailable(false)
       setFailed(false)
     } catch {
       setFailed(true)
@@ -121,7 +127,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     setSending(true)
     try {
       const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, { method: 'POST' })
-      if (!response.ok) throw new Error('Unable to confirm')
+      if (!response.ok) {
+        const error = await response.json().catch(() => null)
+        if (error?.code === 'SESSION_NOT_ACTIVE' || error?.code === 'SESSION_EXPIRED') { setSessionUnavailable(true); return }
+        throw new Error('Unable to confirm')
+      }
       const data = (await response.json()).data
       window.localStorage.removeItem(storageKey)
       setCompleted({ number: data.number, table: data.table, total, count })
@@ -133,7 +143,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
   }
 
   if (!localeReady) return <main className="page"><section className="card" aria-busy="true"><img className="error-logo" src="/logo.png" alt="" width="96" height="96" /></section></main>
-  if (loading || failed) return <main className="page"><section className="card" aria-live="polite"><img className="error-logo" src="/logo.png" alt="" width="96" height="96" /><h1>{failed ? copy.menuUnavailable : copy.qrMenuLoading}</h1><p>{failed ? copy.menuUnavailableDescription : copy.qrMenuDescription}</p></section></main>
+  if (loading || failed || sessionUnavailable) return <main className="page"><section className="card" aria-live="polite"><img className="error-logo" src="/logo.png" alt="" width="96" height="96" /><h1>{sessionUnavailable ? copy.tableSessionUnavailable : failed ? copy.menuUnavailable : copy.qrMenuLoading}</h1><p>{sessionUnavailable ? copy.tableSessionUnavailableDescription : failed ? copy.menuUnavailableDescription : copy.qrMenuDescription}</p></section></main>
   if (completed) return <main className="order-shell"><section className="success-card"><div className="success-mark">✓</div><p className="eyebrow">{copy.brand}</p><h1>{copy.orderSent}</h1><strong className="order-number">#{completed.number}</strong><p>{copy.orderSummary}</p><p>{copy.table}: {completed.table} · {copy.totalItems}: {completed.count}</p><p>{copy.subtotal}: {formatPrice(completed.total, locale)}</p><p>{copy.orderSentDescription}</p></section></main>
 
   return <main className="order-shell"><div className="menu-sticky"><header className="menu-header"><div className="header-meta"><span className="table-badge">{copy.table} {table}</span><button className="header-cart" onClick={() => setCartOpen(true)} aria-label={copy.cart}><span aria-hidden="true">🛒</span><strong>{count}</strong></button><label className="locale-picker"><span className="sr-only">{copy.language}</span><select value={locale} onChange={(event) => { const nextLocale = event.target.value as Locale; setLocale(nextLocale); window.localStorage.setItem(localeStorageKey, nextLocale) }}><option value="vi">VI</option><option value="en">EN</option><option value="zh-TW">繁中</option></select></label></div><div className="brand-lockup"><img src="/logo.png" alt="" width="44" height="44" /><h1>{copy.brand}</h1></div><p className="header-copy">{copy.qrMenuDescription}</p></header><nav className="category-tabs" aria-label={copy.categories}><button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>{copy.all}</button>{categories.map((entry) => <button key={entry.id} className={category === entry.id ? 'active' : ''} onClick={() => setCategory(entry.id)}>{label(entry.names)}</button>)}</nav></div><section className="menu-grid">{visibleItems.map((item) => <article className="menu-card" key={item.id}><div className="dish-art" aria-hidden="true">🍽️</div><div className="menu-card-copy"><p className="menu-name">{label(item.names)}</p><p className="menu-description">{label(item.description)}</p><div className="menu-card-footer"><strong>{formatPrice(item.price, locale)}</strong><button onClick={() => openItem(item)}>{copy.add}</button></div></div></article>)}</section><aside className="cart-dock"><button className="cart-summary" onClick={() => setCartOpen(true)}><div className="cart-heading"><div><p className="eyebrow">{copy.cart}</p><span>{count} {copy.item}</span></div><strong>{formatPrice(total, locale)}</strong></div></button>{cartOpen && <div className="cart-expanded"><div className="cart-panel-header"><div><strong>{copy.cart} · {count} {copy.item}</strong><small className="cart-total">{formatPrice(total, locale)}</small></div><button className="icon-button" onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button></div>{cart.length === 0 ? <p className="cart-empty">{copy.cartEmptyDescription}</p> : <div className="cart-lines">{cart.map((line) => { const item = items.find((candidate) => candidate.id === line.itemId); return <div className="cart-line" key={line.key}><div><strong>{item ? label(item.names) : ''}</strong><small className="line-price">{formatPrice(linePrice(line) * line.quantity, locale)}</small><small>{[line.variant && label(item?.variants.find((choice) => choice.id === line.variant)?.names || { vi: '', en: '', 'zh-TW': '' }), ...(item?.addons.filter((addon) => line.addonIds.includes(addon.id)).map((addon) => label(addon.names)) || [])].filter(Boolean).join(' · ')}</small></div><div className="line-actions"><button className="icon-button" aria-label={copy.customise} onClick={() => item && openItem(item, line)}>✎</button><button aria-label={copy.decreaseQuantity} onClick={() => updateQuantity(line.key, line.quantity - 1)}>−</button><span>{line.quantity}</span><button aria-label={copy.increaseQuantity} onClick={() => updateQuantity(line.key, line.quantity + 1)}>+</button></div></div> })}</div>}<button className="primary-button send-button" disabled={!cart.length || sending} onClick={() => void confirm()}>{copy.sendOrder}</button></div>}</aside>{selected && <div className="modal-backdrop" onMouseDown={() => setSelected(null)}><section className="customise-sheet" role="dialog" aria-modal="true" aria-label={copy.customise} onMouseDown={(event) => event.stopPropagation()}><div className="sheet-title"><div><p className="eyebrow">{copy.customise}</p><h2>{label(selected.names)}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label={copy.cancel}>×</button></div><div className="quantity-row"><span>{copy.quantity}</span><div className="stepper"><button aria-label={copy.decreaseQuantity} onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button><strong>{quantity}</strong><button aria-label={copy.increaseQuantity} onClick={() => setQuantity((value) => value + 1)}>+</button></div></div>{selected.variants.length > 0 && <fieldset><legend>{copy.variant}</legend><div className="choice-grid">{selected.variants.map((choice) => <button key={choice.id} className={variant === choice.id ? 'selected' : ''} onClick={() => setVariant(choice.id)}>{label(choice.names)}</button>)}</div></fieldset>}{selected.noteOptions.length > 0 && <fieldset><legend>{copy.noThanks}</legend><div className="choice-grid">{selected.noteOptions.map((choice) => <button key={choice.id} className={noteOptions.includes(choice.id) ? 'selected' : ''} onClick={() => toggle(choice.id, noteOptions, setNoteOptions)}>{label(choice.names)}</button>)}</div></fieldset>}{selected.addons.length > 0 && <fieldset><legend>{copy.addons}</legend><div className="addon-list">{selected.addons.map((addon) => <button key={addon.id} className={addonIds.includes(addon.id) ? 'selected' : ''} onClick={() => toggle(addon.id, addonIds, setAddonIds)}><span>{label(addon.names)}</span><strong>+{formatPrice(addon.priceExtra, locale)}</strong></button>)}</div></fieldset>}<label className="note-field"><span>{copy.note}</span><textarea value={note} maxLength={300} placeholder={copy.notePlaceholder} onChange={(event) => setNote(event.target.value)} /></label><div className="sheet-footer"><strong>{formatPrice(quantity * (selected.price + selected.addons.filter((addon) => addonIds.includes(addon.id)).reduce((sum, addon) => sum + addon.priceExtra, 0)), locale)}</strong><button className="primary-button" onClick={addToCart}>{editingKey ? copy.updateItem : copy.addToCart}</button></div></section></div>}</main>
