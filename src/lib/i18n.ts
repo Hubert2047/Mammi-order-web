@@ -9,6 +9,9 @@ const messages = {
 Object.assign(messages.vi, { updateItem: 'Cập nhật món' })
 Object.assign(messages.en, { updateItem: 'Update item' })
 Object.assign(messages['zh-TW'], { updateItem: '更新餐點' })
+Object.assign(messages.vi, { comboComponents: 'Các món trong combo' })
+Object.assign(messages.en, { comboComponents: 'Combo components' })
+Object.assign(messages['zh-TW'], { comboComponents: '套餐內容' })
 Object.assign(messages.vi, { onlineOrderRateLimited: 'Bạn đã gửi quá nhiều đơn. Vui lòng thử lại sau 30 phút.' })
 Object.assign(messages.en, { onlineOrderRateLimited: 'You have sent too many orders. Please try again in 30 minutes.' })
 Object.assign(messages['zh-TW'], { onlineOrderRateLimited: '您已送出過多訂單，請於 30 分鐘後再試。' })
@@ -16,5 +19,5 @@ Object.assign(messages.vi, { retry: 'Thử lại' })
 Object.assign(messages.en, { retry: 'Try again' })
 Object.assign(messages['zh-TW'], { retry: '再試一次' })
 
-export type Copy = (typeof messages)[Locale] & { updateItem: string; onlineOrderRateLimited: string; retry: string }
+export type Copy = (typeof messages)[Locale] & { updateItem: string; comboComponents: string; onlineOrderRateLimited: string; retry: string }
 export function t(locale: Locale = 'vi'): Copy { return messages[locale] as Copy }
