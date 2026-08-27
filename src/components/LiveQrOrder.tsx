@@ -111,7 +111,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     }, [sessionUnavailable])
 
     const copy = t(locale)
-    const base = (process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')
+    const base = ''
     const storageKey = `mammi-qr-cart:${qrToken}`
     const label = (value: Text) => value[locale] || value.vi
     const smartCategories = [
@@ -173,7 +173,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
 
     useEffect(() => {
         if (!realtimeToken) return
-        const socket = io(base, {
+        const socket = io(window.location.origin, {
             transports: ['websocket'],
             auth: { publicToken: realtimeToken, clientType: 'customer' },
         })

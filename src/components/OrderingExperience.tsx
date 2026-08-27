@@ -147,7 +147,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
     )
     useEffect(() => {
         let active = true
-        const endpoint = `${(process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')}/api/public/qr/${encodeURIComponent(qrToken)}`
+        const endpoint = `/api/public/qr/${encodeURIComponent(qrToken)}`
         void fetch(endpoint)
             .then(async (response) => {
                 if (!response.ok) throw new Error('menu request failed')
@@ -172,7 +172,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
     }, [qrToken, refreshVersion])
     useEffect(() => {
         if (!realtimeToken) return
-        const socket = io(process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || undefined, {
+        const socket = io(window.location.origin, {
             transports: ['websocket'],
             auth: { publicToken: realtimeToken, clientType: 'customer' },
         })
@@ -231,8 +231,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
         if (!cart.length || sending) return
         setSending(true)
         try {
-            const base = (process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')
-            const created = await fetch(`${base}/api/public/qr/${encodeURIComponent(qrToken)}/carts`, {
+            const created = await fetch(`/api/public/qr/${encodeURIComponent(qrToken)}/carts`, {
                 method: 'POST',
             })
             if (!created.ok) throw new Error()
@@ -245,13 +244,13 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
                 addonIds: line.addons.map((addon) => addon.id),
                 note: line.note,
             }))
-            const updated = await fetch(`${base}/api/public/carts/${cartToken}`, {
+            const updated = await fetch(`/api/public/carts/${cartToken}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ lines }),
             })
             if (!updated.ok) throw new Error()
-            const confirmed = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, { method: 'POST' })
+            const confirmed = await fetch(`/api/public/carts/${cartToken}/confirm`, { method: 'POST' })
             if (!confirmed.ok) throw new Error()
             setSentNumber((await confirmed.json()).data.number)
             setCart([])

@@ -106,7 +106,7 @@ export default function OnlineOrder() {
     const quoteCache = useRef<{ key: string; total: number; expiresAt: number } | null>(null)
     const [completed, setCompleted] = useState<number | null>(null)
     const copy = t(locale)
-    const base = (process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')
+    const base = ''
     const label = (value: Text) => value[locale] || value.vi
     const smartCategories = [
         { id: '__recommended__', key: 'recommended' as const, names: { vi: copy.recommended, en: copy.recommended, 'zh-TW': copy.recommended } },
@@ -166,7 +166,7 @@ export default function OnlineOrder() {
     }, [])
     useEffect(() => {
         if (!realtimeToken) return
-        const socket = io(base, {
+        const socket = io(window.location.origin, {
             transports: ['websocket'],
             auth: { publicToken: realtimeToken, clientType: 'customer' },
         })

@@ -7,7 +7,7 @@ Standalone public Next.js application for QR dine-in ordering and future online 
 - Public domain: `order.mammi.tw`.
 - QR entry: `/q/{qrToken}`.
 - Future online-menu entry: `/s/{storeSlug}`.
-- The application only calls the backend's `/api/public/*` namespace through `NEXT_PUBLIC_ORDER_API_BASE_URL`.
+- The application calls same-origin `/api/public/*` and `/socket.io/*`; the order-web server proxies those paths to the private backend network.
 
 ## Public API contract to implement in the backend
 
@@ -20,4 +20,4 @@ Guest carts are editable, backed by MongoDB, and expire through a TTL index. Con
 
 ## Local Docker
 
-`docker compose up -d` starts this app on `http://localhost:3001`. Set `NEXT_PUBLIC_ORDER_API_BASE_URL=http://localhost:8080` for a browser on the same machine; this value is built into the production image. The backend permits this origin through `ORDER_WEB_URL`.
+`docker compose up -d` starts this app on `http://localhost:3001`. Development may set `INTERNAL_ORDER_API_BASE_URL=http://backend:8080`; this value is server-only and is never embedded in browser JavaScript. Production uses the same internal Docker hostname through `docker-compose.production.yml`.
