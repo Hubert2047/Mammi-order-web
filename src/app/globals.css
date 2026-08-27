@@ -45,3 +45,4 @@ body:has(.order-shell) { overflow:hidden; }.order-shell { display:flex; width:mi
 .turnstile-host { display:flex; justify-content:center; min-height:65px; margin:14px 0; }
 @media (max-width:900px) { .online-layout { grid-template-columns:1fr; }.online-cart { position:static; }.online-cart .cart-lines { max-height:240px; } }
 @media (max-width:649px) { .online-shell { padding-top:20px; }.online-header { padding-bottom:20px; }.online-header h1 { font-size:2rem; }.online-layout { gap:20px; }.online-cart { border-radius:20px; } }
+.dish-art img { width:100%; height:100%; object-fit:cover; }

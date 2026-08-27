@@ -12,9 +12,14 @@ type ComponentSelection = { componentId: string; itemId: string; noteOptions: st
 type MenuItem = {
     id: string
     type?: 'product' | 'combo'
-    category: { id: string; names: Text }
+    category: { id: string; names: Text; sortOrder?: number }
     names: Text
     description: Text
+    imageUrl?: string
+    recommended?: boolean
+    popular?: boolean
+    new?: boolean
+    promotion?: boolean
     price: number
     displayPrice?: number
     variants: Choice[]
@@ -109,6 +114,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const base = (process.env.NEXT_PUBLIC_ORDER_API_BASE_URL || '').replace(/\/$/, '')
     const storageKey = `mammi-qr-cart:${qrToken}`
     const label = (value: Text) => value[locale] || value.vi
+    const smartCategories = [
+        { id: '__recommended__', key: 'recommended' as const, names: { vi: copy.recommended, en: copy.recommended, 'zh-TW': copy.recommended } },
+        { id: '__popular__', key: 'popular' as const, names: { vi: copy.popular, en: copy.popular, 'zh-TW': copy.popular } },
+        { id: '__new__', key: 'new' as const, names: { vi: copy.newProduct, en: copy.newProduct, 'zh-TW': copy.newProduct } },
+        { id: '__promotion__', key: 'promotion' as const, names: { vi: copy.promotion, en: copy.promotion, 'zh-TW': copy.promotion } },
+    ]
 
     const load = async () => {
         try {
@@ -241,10 +252,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const total = promotionTotal ?? catalogTotal
     const count = cart.reduce((sum, line) => sum + line.quantity, 0)
     const categories = useMemo(
-        () => [...new Map(items.map((item) => [item.category.id, item.category])).values()],
-        [items],
+        () => [...smartCategories.filter((entry) => items.some((item) => item[entry.key] === true)).map((entry) => ({ id: entry.id, names: entry.names })), ...[...new Map(items.map((item) => [item.category.id, item.category])).values()].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || label(left.names).localeCompare(label(right.names)))],
+        [items, locale],
     )
-    const visibleItems = category === 'all' ? items : items.filter((item) => item.category.id === category)
+    const visibleItems = category === 'all' ? items : category.startsWith('__') ? items.filter((item) => { const smart = smartCategories.find((entry) => entry.id === category); return smart ? item[smart.key] === true : false }) : items.filter((item) => item.category.id === category)
     useEffect(() => {
         menuGridRef.current?.scrollTo({ top: 0, behavior: 'auto' })
     }, [category])
@@ -441,7 +452,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     return (
                         <article className='menu-card' key={item.id}>
                             <div className='dish-art' aria-hidden='true'>
-                                🍽️
+                                {item.imageUrl ? <img src={item.imageUrl} alt='' /> : '🍽️'}
                             </div>
                             <div className='menu-card-copy'>
                                 <p className='menu-name'>{label(item.names)}</p>
