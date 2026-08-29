@@ -115,9 +115,13 @@ export default function OnlineOrder() {
         { id: '__promotion__', key: 'promotion' as const, names: { vi: copy.promotion, en: copy.promotion, 'zh-TW': copy.promotion } },
     ]
     const categories = useMemo(
-        () => [...smartCategories.filter((entry) => items.some((item) => item[entry.key] === true)).map((entry) => ({ id: entry.id, names: entry.names })), ...[...new Map(items.map((item) => [item.category.id, item.category])).values()].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || label(left.names).localeCompare(label(right.names)))],
+        () => [...smartCategories.filter((entry) => items.some((item) => item[entry.key] === true)).map((entry) => ({ id: entry.id, names: entry.names })), ...[...new Map(items.map((item) => [item.category.id, item.category])).values()].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))],
         [items, locale],
     )
+    useEffect(() => {
+        if (category === 'all' || categories.some((entry) => entry.id === category)) return
+        setCategory('all')
+    }, [categories, category])
     const visibleItems = category === 'all' ? items : category.startsWith('__') ? items.filter((item) => { const smart = smartCategories.find((entry) => entry.id === category); return smart ? item[smart.key] === true : false }) : items.filter((item) => item.category.id === category)
     const linePrice = (line: CartLine) => {
         const item = items.find((candidate) => candidate.id === line.itemId)
