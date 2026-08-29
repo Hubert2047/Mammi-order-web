@@ -21,6 +21,9 @@ Object.assign(messages['zh-TW'], { retry: '再試一次' })
 Object.assign(messages.vi, { recommended: 'Gợi ý', popular: 'Bán chạy', newProduct: 'Món mới', promotion: 'Đang giảm giá' })
 Object.assign(messages.en, { recommended: 'Recommended', popular: 'Popular', newProduct: 'New', promotion: 'On sale' })
 Object.assign(messages['zh-TW'], { recommended: '推薦', popular: '熱門', newProduct: '新品', promotion: '優惠中' })
+Object.assign(messages.vi, { pickupTime: 'Thời gian nhận món' })
+Object.assign(messages.en, { pickupTime: 'Pickup time' })
+Object.assign(messages['zh-TW'], { pickupTime: '取餐時間' })
 
-export type Copy = (typeof messages)[Locale] & { updateItem: string; comboComponents: string; onlineOrderRateLimited: string; retry: string; recommended: string; popular: string; newProduct: string; promotion: string }
+export type Copy = (typeof messages)[Locale] & { updateItem: string; comboComponents: string; onlineOrderRateLimited: string; retry: string; recommended: string; popular: string; newProduct: string; promotion: string; pickupTime: string }
 export function t(locale: Locale = 'vi'): Copy { return messages[locale] as Copy }

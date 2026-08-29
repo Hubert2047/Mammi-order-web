@@ -75,6 +75,7 @@ const formatPrice = (amount: number, locale: Locale) =>
         currency: 'TWD',
         maximumFractionDigits: 0,
     }).format(amount)
+const taipeiInputValue = (date: Date) => new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16)
 
 export default function OnlineOrder() {
     const [locale, setLocale] = useState<Locale>('vi')
@@ -94,6 +95,7 @@ export default function OnlineOrder() {
     const [note, setNote] = useState('')
     const [componentSelections, setComponentSelections] = useState<ComponentSelection[]>([])
     const [customer, setCustomer] = useState({ phone: '', name: '', address: '' })
+    const [pickupAt, setPickupAt] = useState(() => taipeiInputValue(new Date(Date.now() + 60 * 60 * 1000)))
     const [loading, setLoading] = useState(true)
     const [failed, setFailed] = useState(false)
     const [orderRateLimited, setOrderRateLimited] = useState(false)
@@ -315,7 +317,7 @@ export default function OnlineOrder() {
             const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ customer, turnstileToken }),
+                body: JSON.stringify({ customer, turnstileToken, pickupAt: new Date(`${pickupAt}:00+08:00`).toISOString() }),
             })
             if (!response.ok) {
                 const payload = await response.json().catch(() => null)
@@ -640,6 +642,10 @@ export default function OnlineOrder() {
                                 value={customer.address}
                                 onChange={(event) => setCustomer({ ...customer, address: event.target.value })}
                             />
+                        </label>
+                        <label>
+                            {copy.pickupTime}
+                            <input type='datetime-local' value={pickupAt} min={taipeiInputValue(new Date())} onChange={(event) => setPickupAt(event.target.value)} />
                         </label>
                         <button
                             className='primary-button'
