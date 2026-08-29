@@ -14,6 +14,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
 COPY --from=build /app/dist ./dist
 # Keep only production dependencies needed by the custom proxy server.
 COPY --from=build /app/node_modules ./node_modules
