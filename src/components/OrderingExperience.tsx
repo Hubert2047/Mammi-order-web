@@ -474,7 +474,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
                             <span>{copy.note}</span>
                             <textarea
                                 value={note}
-                                maxLength={300}
+                                maxLength={40}
                                 placeholder={copy.notePlaceholder}
                                 onChange={(event) => setNote(event.target.value)}
                             />

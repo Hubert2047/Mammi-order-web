@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
@@ -623,7 +623,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                             <summary>{label(component.names)} {(selected.components?.filter((entry) => entry.itemId === component.itemId).length || 0) > 1 ? index + 1 : ''}</summary>
                                             <div className='component-options'>
                                                 <div className='choice-grid'>{component.noteOptions.map((choice) => <button key={choice.id} className={selection.noteOptions.includes(choice.id) ? 'selected' : ''} onClick={() => setComponentSelections((current) => current.map((entry) => entry.componentId === selection.componentId ? { ...entry, noteOptions: entry.noteOptions.includes(choice.id) ? entry.noteOptions.filter((id) => id !== choice.id) : [...entry.noteOptions, choice.id] } : entry))}>{label(choice.names)}</button>)}</div>
-                                                <textarea value={selection.note || ''} maxLength={300} placeholder={copy.notePlaceholder} onChange={(event) => setComponentSelections((current) => current.map((entry) => entry.componentId === selection.componentId ? { ...entry, note: event.target.value } : entry))} />
+                                                <textarea value={selection.note || ''} maxLength={40} placeholder={copy.notePlaceholder} onChange={(event) => setComponentSelections((current) => current.map((entry) => entry.componentId === selection.componentId ? { ...entry, note: event.target.value } : entry))} />
                                             </div>
                                         </details>
                                     })}
@@ -675,7 +675,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             <span>{copy.note}</span>
                             <textarea
                                 value={note}
-                                maxLength={300}
+                                maxLength={40}
                                 placeholder={copy.notePlaceholder}
                                 onChange={(event) => setNote(event.target.value)}
                             />
