@@ -82,6 +82,7 @@ body:has(.online-shell) {
     background: #f8f6f1;
     scrollbar-gutter: stable;
 }
+html:has(.online-shell) { overflow-y: scroll; }
 
 .online-shell {
     width: min(100%, 1440px);
