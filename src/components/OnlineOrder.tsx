@@ -58,6 +58,8 @@ declare global {
 }
 
 const localeStorageKey = 'mammi-order-locale-v2'
+const cartStorageKey = 'mammi-online-cart-v1'
+const cartTokenStorageKey = 'mammi-online-cart-token-v1'
 const createKey = () =>
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
 const detectLocale = (): Locale => {
@@ -84,8 +86,19 @@ export default function OnlineOrder() {
     const [realtimeToken, setRealtimeToken] = useState('')
     const [category, setCategory] = useState('all')
     const [type, setType] = useState<OrderType>('dine_in')
-    const [cartToken, setCartToken] = useState('')
-    const [cart, setCart] = useState<CartLine[]>([])
+    const [cartToken, setCartToken] = useState(() => {
+        if (typeof window === 'undefined') return ''
+        return window.localStorage.getItem(cartTokenStorageKey) || ''
+    })
+    const [cart, setCart] = useState<CartLine[]>(() => {
+        if (typeof window === 'undefined') return []
+        try {
+            const saved = JSON.parse(window.localStorage.getItem(cartStorageKey) || '[]')
+            return Array.isArray(saved) ? saved : []
+        } catch {
+            return []
+        }
+    })
     const [promotionTotal, setPromotionTotal] = useState<number | null>(null)
     const [selected, setSelected] = useState<MenuItem | null>(null)
     const [quantity, setQuantity] = useState(1)
@@ -101,6 +114,7 @@ export default function OnlineOrder() {
     const [orderRateLimited, setOrderRateLimited] = useState(false)
     const [sending, setSending] = useState(false)
     const [checkoutOpen, setCheckoutOpen] = useState(false)
+    const [cartOpen, setCartOpen] = useState(false)
     const [turnstileReady, setTurnstileReady] = useState(false)
     const [turnstileToken, setTurnstileToken] = useState('')
     const [turnstileError, setTurnstileError] = useState(false)
@@ -109,7 +123,27 @@ export default function OnlineOrder() {
     const [completed, setCompleted] = useState<number | null>(null)
     const copy = t(locale)
     const base = ''
+    useEffect(() => {
+        const modalOpen = Boolean(selected || cartOpen || checkoutOpen)
+        if (!modalOpen) return
+        const previousOverflow = document.body.style.overflow
+        const previousPaddingRight = document.body.style.paddingRight
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+        document.body.style.overflow = 'hidden'
+        if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`
+        return () => {
+            document.body.style.overflow = previousOverflow
+            document.body.style.paddingRight = previousPaddingRight
+        }
+    }, [selected, cartOpen, checkoutOpen])
     const label = (value: Text) => value[locale] || value.vi
+    useEffect(() => {
+        window.localStorage.setItem(cartStorageKey, JSON.stringify(cart))
+    }, [cart])
+    useEffect(() => {
+        if (cartToken) window.localStorage.setItem(cartTokenStorageKey, cartToken)
+        else window.localStorage.removeItem(cartTokenStorageKey)
+    }, [cartToken])
     const smartCategories = [
         { id: '__recommended__', key: 'recommended' as const, names: { vi: copy.recommended, en: copy.recommended, 'zh-TW': copy.recommended } },
         { id: '__popular__', key: 'popular' as const, names: { vi: copy.popular, en: copy.popular, 'zh-TW': copy.popular } },
@@ -250,7 +284,7 @@ export default function OnlineOrder() {
         if (!checkoutOpen || !turnstileReady || !process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || !window.turnstile) return
         const host = document.createElement('div')
         host.className = 'turnstile-host'
-        document.querySelector('.checkout-card')?.append(host)
+        document.querySelector('.turnstile-slot')?.append(host)
         if (!host.parentElement) return
         widgetId.current = window.turnstile.render(host, {
             sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
@@ -330,6 +364,9 @@ export default function OnlineOrder() {
             }
             setCompleted((await response.json()).data.number)
             setCart([])
+            window.localStorage.removeItem(cartStorageKey)
+            setCartToken('')
+            window.localStorage.removeItem(cartTokenStorageKey)
             setCheckoutOpen(false)
         } catch {
             setFailed(true)
@@ -340,17 +377,17 @@ export default function OnlineOrder() {
 
     if (loading || failed)
         return (
-            <main className='page'>
+            <main className='page online-loading-page'>
                 <section className='card' aria-live='polite'>
                     <img className='error-logo' src='/logo.png' alt='' width='96' height='96' />
-                    <h1>{failed ? copy.menuUnavailable : copy.qrMenuLoading}</h1>
-                    <p>
-                        {orderRateLimited
-                            ? copy.onlineOrderRateLimited
-                            : failed
-                              ? copy.menuUnavailableDescription
-                              : copy.qrMenuDescription}
-                    </p>
+                    {failed && (
+                        <>
+                            <h1>{copy.menuUnavailable}</h1>
+                            <p>
+                                {orderRateLimited ? copy.onlineOrderRateLimited : copy.menuUnavailableDescription}
+                            </p>
+                        </>
+                    )}
                 </section>
             </main>
         )
@@ -359,7 +396,7 @@ export default function OnlineOrder() {
             <main className='page'>
                 <section className='success-card'>
                     <div className='success-mark'>✓</div>
-                    <p className='eyebrow'>{storeName || copy.brand}</p>
+                    <p className='eyebrow'>{copy.brand}</p>
                     <h1>{copy.orderSent}</h1>
                     <strong className='order-number'>#{completed}</strong>
                     <p>{copy.onlineOrderSentDescription}</p>
@@ -378,10 +415,14 @@ export default function OnlineOrder() {
     return (
         <main className='online-shell'>
             <header className='online-header'>
-                <div>
-                    <p className='eyebrow'>{copy.brand}</p>
-                    <h1>{storeName || copy.brand}</h1>
-                    <p>{copy.onlineMenuDescription}</p>
+                <div className='online-brand-intro'>
+                    <div className='online-brand-mark'>
+                        <img src='/logo.png' alt='' width='72' height='72' />
+                    </div>
+                    <div>
+                        <h1>Mam Mi</h1>
+                        <p>{copy.onlineMenuDescription}</p>
+                    </div>
                 </div>
                 <label className='locale-picker'>
                     <span className='sr-only'>{copy.language}</span>
@@ -426,11 +467,22 @@ export default function OnlineOrder() {
                         {visibleItems.map((item) => {
                             const displayPrice = item.displayPrice ?? item.price
                             return (
-                                <article className='menu-card' key={item.id}>
+                                <article className='menu-card online-menu-card' key={item.id}>
                                     <div className='dish-art' aria-hidden='true'>
                                         {item.imageUrl ? <img src={item.imageUrl} alt='' /> : '🍽️'}
                                     </div>
                                     <div className='menu-card-copy'>
+                                        {(item.recommended || item.popular || item.new || item.promotion) && (
+                                            <span className='menu-badge'>
+                                                {item.recommended
+                                                    ? copy.recommended
+                                                    : item.popular
+                                                      ? copy.popular
+                                                      : item.new
+                                                        ? copy.newProduct
+                                                        : copy.promotion}
+                                            </span>
+                                        )}
                                         <p className='menu-name'>{label(item.names)}</p>
                                         <p className='menu-description'>{label(item.description)}</p>
                                         <div className='menu-card-footer'>
@@ -450,7 +502,13 @@ export default function OnlineOrder() {
                         })}
                     </div>
                 </section>
-                <aside className='online-cart'>
+                <button className='cart-fab' onClick={() => setCartOpen(true)} aria-label={copy.cart}>
+                    <span aria-hidden='true'>🛒</span>
+                    <span>{copy.cart}</span>
+                    {count > 0 && <strong>{count}</strong>}
+                </button>
+                {cartOpen && <div className='cart-drawer-backdrop' onMouseDown={() => setCartOpen(false)} />}
+                {cartOpen && <aside className='online-cart'>
                     <div className='cart-heading'>
                         <div>
                             <p className='eyebrow'>{copy.cart}</p>
@@ -489,10 +547,14 @@ export default function OnlineOrder() {
                     <button
                         className='primary-button send-button'
                         disabled={!cart.length}
-                        onClick={() => setCheckoutOpen(true)}>
+                        onClick={() => {
+                            setCartOpen(false)
+                            setCheckoutOpen(true)
+                        }}>
                         {copy.continueOrder}
                     </button>
-                </aside>
+                    <button className='cart-close' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
+                </aside>}
             </div>
             {selected && (
                 <div className='modal-backdrop' onMouseDown={() => setSelected(null)}>
@@ -647,9 +709,10 @@ export default function OnlineOrder() {
                             {copy.pickupTime}
                             <input type='datetime-local' value={pickupAt} min={taipeiInputValue(new Date())} onChange={(event) => setPickupAt(event.target.value)} />
                         </label>
+                        <div className='turnstile-slot' />
                         <button
                             className='primary-button'
-                            disabled={!customer.phone.trim() || sending}
+                            disabled={!customer.phone.trim() || !turnstileToken || turnstileError || sending}
                             onClick={() => void confirm()}>
                             {copy.sendOrder}
                         </button>
