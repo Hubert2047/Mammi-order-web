@@ -4,7 +4,14 @@ import './globals.css'
 
 export const metadata: Metadata = {
     title: '漫迷 Order',
-    icons: { icon: '/logo.png', apple: '/logo.png' },
+    icons: {
+        icon: [
+            { url: '/logo.png?v=1.0', type: 'image/png', sizes: '512x512' },
+            { url: '/logo.png?v=1.0', type: 'image/png', rel: 'shortcut icon' },
+        ],
+        shortcut: '/logo.png?v=1.0',
+        apple: '/logo.png?v=1.0',
+    },
     robots: { index: false, follow: false },
 }
 
