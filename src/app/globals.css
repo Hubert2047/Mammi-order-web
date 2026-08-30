@@ -73,3 +73,6 @@ body:has(.order-shell) { overflow:hidden; }.order-shell { display:flex; width:mi
 .success-card > p:nth-of-type(4) { margin-top:14px; font-size:1.35rem; }
 .success-card > p:nth-of-type(5) { margin-top:16px; font-size:1.2rem; font-weight:600; }
 .success-card > p:nth-of-type(4) strong { color:#5f8c25; font-size:1.65rem; font-weight:900; }
+.payment-instruction { font-size:1.2rem; line-height:1.65; }.payment-instruction strong { color:#dc2626; font-size:1.45em; }
+.order-shell > .success-card { margin: auto; padding: 24px 14px; }
+.order-shell > .success-card .payment-instruction { white-space: nowrap; font-size: 1rem; letter-spacing: -0.02em; }

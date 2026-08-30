@@ -392,6 +392,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     <div className='success-mark'>✓</div>
                     <p className='eyebrow'>{copy.brand}</p>
                     <h1>{copy.orderSent}</h1>
+                    <p className='payment-instruction'>
+                        {copy.paymentInstructionStart}
+                        <strong>{copy.paymentInstructionCounter}</strong>
+                        {copy.paymentInstructionMiddle}
+                        <strong>{copy.paymentInstructionPay}</strong>
+                    </p>
                     <strong className='order-number'>#{completed.number}</strong>
                     <p>{copy.orderSummary}</p>
                     <p>
@@ -400,7 +406,6 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     <p>
                         {copy.subtotal}: {formatPrice(completed.total, locale)}
                     </p>
-                    <p>{copy.orderSentDescription}</p>
                 </section>
             </main>
         )

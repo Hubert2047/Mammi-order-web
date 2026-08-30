@@ -25,5 +25,9 @@ Object.assign(messages.vi, { pickupTime: 'Thời gian nhận món' })
 Object.assign(messages.en, { pickupTime: 'Pickup time' })
 Object.assign(messages['zh-TW'], { pickupTime: '取餐時間' })
 
-export type Copy = (typeof messages)[Locale] & { updateItem: string; comboComponents: string; onlineOrderRateLimited: string; retry: string; recommended: string; popular: string; newProduct: string; promotion: string; pickupTime: string }
+Object.assign(messages.vi, { paymentInstructionStart: 'Vui lòng ', paymentInstructionCounter: 'đến quầy', paymentInstructionMiddle: 'báo số đơn này và ', paymentInstructionPay: 'thanh toán.' })
+Object.assign(messages.en, { paymentInstructionStart: 'Please ', paymentInstructionCounter: 'go to the cashier', paymentInstructionMiddle: 'tell them this order number and ', paymentInstructionPay: 'pay.' })
+Object.assign(messages['zh-TW'], { paymentInstructionStart: '請', paymentInstructionCounter: '到櫃檯', paymentInstructionMiddle: '告知此訂單號碼並', paymentInstructionPay: '付款。' })
+
+export type Copy = (typeof messages)[Locale] & { updateItem: string; comboComponents: string; onlineOrderRateLimited: string; retry: string; recommended: string; popular: string; newProduct: string; promotion: string; pickupTime: string; paymentInstructionStart: string; paymentInstructionCounter: string; paymentInstructionMiddle: string; paymentInstructionPay: string }
 export function t(locale: Locale = 'vi'): Copy { return messages[locale] as Copy }
