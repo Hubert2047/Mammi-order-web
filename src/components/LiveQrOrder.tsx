@@ -127,6 +127,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             if (!response.ok) {
                 const error = await response.json().catch(() => null)
                 if (error?.code === 'SESSION_NOT_ACTIVE' || error?.code === 'SESSION_EXPIRED') {
+                    if (error.table?.code) setTable(error.table.code)
                     setSessionUnavailable(true)
                     setFailed(false)
                     return
@@ -361,13 +362,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                               ? copy.menuUnavailable
                               : copy.qrMenuLoading}
                     </h1>
-                    <p>
+                    <p className={sessionUnavailable ? 'session-unavailable-message' : undefined}>
                         {sessionUnavailable
                             ? copy.tableSessionUnavailableDescription
                             : failed
                               ? copy.menuUnavailableDescription
                               : copy.qrMenuDescription}
                     </p>
+                    {sessionUnavailable && table && <strong className='session-table-number'>{copy.table} {table}</strong>}
                     {sessionUnavailable && (
                         <button
                             className='retry-link'
