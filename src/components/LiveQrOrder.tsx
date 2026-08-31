@@ -86,6 +86,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [note, setNote] = useState('')
     const [componentSelections, setComponentSelections] = useState<ComponentSelection[]>([])
     const [loading, setLoading] = useState(true)
+    const [menuReady, setMenuReady] = useState(false)
+    const [loadingScreenVisible, setLoadingScreenVisible] = useState(true)
+    const [loadingScreenLeaving, setLoadingScreenLeaving] = useState(false)
     const [failed, setFailed] = useState(false)
     const [sessionUnavailable, setSessionUnavailable] = useState(false)
     const [sending, setSending] = useState(false)
@@ -99,6 +102,19 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         setLocale(detectLocale())
         setLocaleReady(true)
     }, [])
+    useEffect(() => {
+        if (!localeReady || loading || failed || sessionUnavailable) return
+
+        const frame = window.requestAnimationFrame(() => {
+            setMenuReady(true)
+            setLoadingScreenLeaving(true)
+        })
+        const timeout = window.setTimeout(() => setLoadingScreenVisible(false), 300)
+        return () => {
+            window.cancelAnimationFrame(frame)
+            window.clearTimeout(timeout)
+        }
+    }, [failed, loading, localeReady, sessionUnavailable])
     useEffect(() => {
         document.body.style.overflow = cartOpen ? 'hidden' : ''
         return () => {
@@ -351,7 +367,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
 
     if (!localeReady)
         return <MenuLoadingState />
-    if (loading || failed || sessionUnavailable)
+    if (failed || sessionUnavailable)
         return (
             <MenuLoadingState
                 className={sessionUnavailable ? 'session-unavailable' : ''}
@@ -381,11 +397,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             <main className='order-shell'>
                 <section className='success-card'>
                     <div className='success-mark'>✓</div>
-                    <p className='eyebrow'>{copy.brand}</p>
                     <h1>{copy.orderSent}</h1>
-                    <p className='payment-instruction'>
+                    <p className='payment-instruction !whitespace-normal break-words leading-relaxed'>
                         {copy.paymentInstructionStart}
                         <strong>{copy.paymentInstructionCounter}</strong>
+                        {' '}
                         {copy.paymentInstructionMiddle}
                         <strong>{copy.paymentInstructionPay}</strong>
                     </p>
@@ -402,7 +418,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         )
 
     return (
-        <main className='order-shell'>
+        <>
+            {loadingScreenVisible && (
+                <MenuLoadingState
+                    className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? 'opacity-0' : 'opacity-100'}`}
+                />
+            )}
+        <main className={`order-shell transition-[opacity,transform] duration-300 ease-out ${menuReady ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}>
             <div className='menu-sticky'>
                 <header className='menu-header'>
                     <div className='header-meta'>
@@ -764,5 +786,6 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </div>
             )}
         </main>
+        </>
     )
 }

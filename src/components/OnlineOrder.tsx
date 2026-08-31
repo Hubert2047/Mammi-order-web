@@ -119,6 +119,9 @@ export default function OnlineOrder() {
     const [customer, setCustomer] = useState({ phone: '', name: '', address: '' })
     const [pickupAt, setPickupAt] = useState(() => taipeiInputValue(new Date(Date.now() + 60 * 60 * 1000)))
     const [loading, setLoading] = useState(true)
+    const [menuReady, setMenuReady] = useState(false)
+    const [loadingScreenVisible, setLoadingScreenVisible] = useState(true)
+    const [loadingScreenLeaving, setLoadingScreenLeaving] = useState(false)
     const [failed, setFailed] = useState(false)
     const [orderRateLimited, setOrderRateLimited] = useState(false)
     const [sending, setSending] = useState(false)
@@ -237,6 +240,19 @@ export default function OnlineOrder() {
         setLocale(detectLocale())
         void load()
     }, [])
+    useEffect(() => {
+        if (loading || failed) return
+
+        const frame = window.requestAnimationFrame(() => {
+            setMenuReady(true)
+            setLoadingScreenLeaving(true)
+        })
+        const timeout = window.setTimeout(() => setLoadingScreenVisible(false), 300)
+        return () => {
+            window.cancelAnimationFrame(frame)
+            window.clearTimeout(timeout)
+        }
+    }, [failed, loading])
     useEffect(() => {
         if (!realtimeToken) return
         const socket = io(window.location.origin, {
@@ -418,7 +434,7 @@ export default function OnlineOrder() {
         }
     }
 
-    if (loading || failed)
+    if (failed)
         return (
             <MenuLoadingState
                 title={failed ? copy.menuUnavailable : undefined}
@@ -447,7 +463,13 @@ export default function OnlineOrder() {
         )
 
     return (
-        <main className='online-shell'>
+        <>
+            {loadingScreenVisible && (
+                <MenuLoadingState
+                    className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? 'opacity-0' : 'opacity-100'}`}
+                />
+            )}
+        <main className={`online-shell transition-[opacity,transform] duration-300 ease-out ${menuReady ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}>
             <div className='online-menu-sticky'>
             <header className='menu-header online-header online-menu-header'>
                 <div className='brand-lockup'>
@@ -840,5 +862,6 @@ export default function OnlineOrder() {
                 </div>
             )}
         </main>
+        </>
     )
 }
