@@ -1,8 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { type Locale, t } from '@/lib/i18n'
+import CartLineItem from '@/components/CartLineItem'
+import CartPanelHeader from '@/components/CartPanelHeader'
+import MobileCategoryTabs from '@/components/MobileCategoryTabs'
+import MobileMenuItemCard from '@/components/MobileMenuItemCard'
+import MobileStoreFooter from '@/components/MobileStoreFooter'
+import MenuLoadingState from '@/components/MenuLoadingState'
+import { storeFooter } from '@/lib/storeFooter'
 
 type Text = Record<Locale, string>
 type Choice = { id: string; names: Text }
@@ -343,47 +350,31 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     }
 
     if (!localeReady)
-        return (
-            <main className='page'>
-                <section className='card' aria-busy='true'>
-                    <img className='error-logo' src='/logo.png' alt='' width='96' height='96' />
-                </section>
-            </main>
-        )
+        return <MenuLoadingState />
     if (loading || failed || sessionUnavailable)
         return (
-            <main className={`page${sessionUnavailable ? ' session-unavailable' : ''}`}>
-                <section className='card' aria-live='polite'>
-                    <img className='error-logo' src='/logo.png' alt='' width='96' height='96' />
-                    <h1>
-                        {sessionUnavailable
-                            ? copy.tableSessionUnavailable
-                            : failed
-                              ? copy.menuUnavailable
-                              : copy.qrMenuLoading}
-                    </h1>
-                    <p className={sessionUnavailable ? 'session-unavailable-message' : undefined}>
-                        {sessionUnavailable
-                            ? copy.tableSessionUnavailableDescription
-                            : failed
-                              ? copy.menuUnavailableDescription
-                              : copy.qrMenuDescription}
-                    </p>
-                    {sessionUnavailable && table && <strong className='session-table-number'>{copy.table} {table}</strong>}
-                    {sessionUnavailable && (
-                        <button
-                            className='retry-link'
-                            onClick={() => {
-                                setLoading(true)
-                                setFailed(false)
-                                setSessionUnavailable(false)
-                                void load()
-                            }}>
-                            {copy.retry}
-                        </button>
-                    )}
-                </section>
-            </main>
+            <MenuLoadingState
+                className={sessionUnavailable ? 'session-unavailable' : ''}
+                title={sessionUnavailable ? copy.tableSessionUnavailable : failed ? copy.menuUnavailable : copy.qrMenuLoading}
+                description={
+                    <span className={sessionUnavailable ? 'session-unavailable-message' : undefined}>
+                        {sessionUnavailable ? copy.tableSessionUnavailableDescription : failed ? copy.menuUnavailableDescription : copy.qrMenuDescription}
+                    </span>
+                }>
+                {sessionUnavailable && table && <strong className='session-table-number'>{copy.table} {table}</strong>}
+                {sessionUnavailable && (
+                    <button
+                        className='retry-link'
+                        onClick={() => {
+                            setLoading(true)
+                            setFailed(false)
+                            setSessionUnavailable(false)
+                            void load()
+                        }}>
+                        {copy.retry}
+                    </button>
+                )}
+            </MenuLoadingState>
         )
     if (completed)
         return (
@@ -443,7 +434,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     </div>
                     <p className='header-copy'>{copy.qrMenuDescription}</p>
                 </header>
-                <nav className='category-tabs' aria-label={copy.categories}>
+                <MobileCategoryTabs
+                    tabs={[{ id: 'all', label: copy.all }, ...categories.map((entry) => ({ id: entry.id, label: label(entry.names) }))]}
+                    selectedId={category}
+                    ariaLabel={copy.categories}
+                    onSelect={setCategory}
+                />
+                <nav className='category-tabs !hidden sm:!flex' aria-label={copy.categories}>
                     <button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>
                         {copy.all}
                     </button>
@@ -461,7 +458,17 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 {visibleItems.map((item) => {
                     const displayPrice = item.displayPrice ?? item.price
                     return (
-                        <article className='menu-card' key={item.id}>
+                        <Fragment key={item.id}>
+                            <MobileMenuItemCard
+                                name={label(item.names)}
+                                description={label(item.description)}
+                                imageUrl={item.imageUrl}
+                                price={formatPrice(displayPrice, locale)}
+                                originalPrice={displayPrice < item.price ? formatPrice(item.price, locale) : undefined}
+                                addLabel={copy.add}
+                                onAdd={() => openItem(item)}
+                            />
+                        <article className='menu-card !hidden sm:!flex'>
                             <div className='dish-art' aria-hidden='true'>
                                 {item.imageUrl ? <img src={item.imageUrl} alt='' /> : '🍽️'}
                             </div>
@@ -481,9 +488,18 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 </div>
                             </div>
                         </article>
+                        </Fragment>
                     )
                 })}
             </section>
+            <MobileStoreFooter
+                name={storeFooter.name}
+                hoursLabel={copy.businessHours}
+                hours={storeFooter.hours}
+                phone={storeFooter.phone}
+                address={storeFooter.address}
+                copyright={storeFooter.copyright}
+            />
             <aside className='cart-dock'>
                 <button className='cart-summary' onClick={() => setCartOpen(true)}>
                     <div className='cart-heading'>
@@ -498,16 +514,21 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </button>
                 {cartOpen && (
                     <div className='cart-expanded'>
-                        <div className='cart-panel-header'>
+                        <CartPanelHeader
+                            cartLabel={copy.cart}
+                            count={count}
+                            itemLabel={copy.item}
+                            total={formatPrice(total, locale)}
+                            closeLabel={copy.cancel}
+                            onClose={() => setCartOpen(false)}
+                            className='-mx-[max(18px,calc((100vw-680px)/2))] -mt-6 sm:!hidden'
+                        />
+                        <div className='cart-panel-header !hidden sm:!flex'>
                             <div>
-                                <strong>
-                                    {copy.cart} · {count} {copy.item}
-                                </strong>
+                                <strong>{copy.cart} · {count} {copy.item}</strong>
                                 <small className='cart-total'>{formatPrice(total, locale)}</small>
                             </div>
-                            <button className='icon-button' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>
-                                ×
-                            </button>
+                            <button className='icon-button' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
                         </div>
                         {cart.length === 0 ? (
                             <p className='cart-empty'>{copy.cartEmptyDescription}</p>
@@ -515,49 +536,87 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             <div className='cart-lines'>
                                 {cart.map((line) => {
                                     const item = items.find((candidate) => candidate.id === line.itemId)
+                                    const details = [
+                                        line.variant &&
+                                            label(
+                                                item?.variants.find((choice) => choice.id === line.variant)?.names || {
+                                                    vi: '',
+                                                    en: '',
+                                                    'zh-TW': '',
+                                                },
+                                            ),
+                                        ...(item?.addons
+                                            .filter((addon) => line.addonIds.includes(addon.id))
+                                            .map((addon) => label(addon.names)) || []),
+                                    ]
+                                        .filter(Boolean)
+                                        .join(' · ')
                                     return (
-                                        <div className='cart-line' key={line.key}>
+                                        <Fragment key={line.key}>
+                                            <CartLineItem
+                                                name={item ? label(item.names) : ''}
+                                                price={formatPrice(linePrice(line) * line.quantity, locale)}
+                                                details={details}
+                                                quantity={line.quantity}
+                                                decreaseLabel={copy.decreaseQuantity}
+                                                increaseLabel={copy.increaseQuantity}
+                                                customiseLabel={copy.customise}
+                                                removeLabel={copy.remove}
+                                                onDecrease={() => updateQuantity(line.key, line.quantity - 1)}
+                                                onIncrease={() => updateQuantity(line.key, line.quantity + 1)}
+                                                onCustomise={() => item && openItem(item, line)}
+                                                onRemove={() => updateQuantity(line.key, 0)}
+                                            />
+                                        <div className='cart-line !hidden sm:!flex'>
                                             <div>
                                                 <strong>{item ? label(item.names) : ''}</strong>
                                                 <small className='line-price'>
                                                     {formatPrice(linePrice(line) * line.quantity, locale)}
                                                 </small>
                                                 <small>
-                                                    {[
-                                                        line.variant &&
-                                                            label(
-                                                                item?.variants.find(
-                                                                    (choice) => choice.id === line.variant,
-                                                                )?.names || { vi: '', en: '', 'zh-TW': '' },
-                                                            ),
-                                                        ...(item?.addons
-                                                            .filter((addon) => line.addonIds.includes(addon.id))
-                                                            .map((addon) => label(addon.names)) || []),
-                                                    ]
-                                                        .filter(Boolean)
-                                                        .join(' · ')}
+                                                    {details}
                                                 </small>
                                             </div>
                                             <div className='line-actions'>
-                                                <button
-                                                    className='icon-button'
-                                                    aria-label={copy.customise}
-                                                    onClick={() => item && openItem(item, line)}>
-                                                    ✎
-                                                </button>
-                                                <button
-                                                    aria-label={copy.decreaseQuantity}
-                                                    onClick={() => updateQuantity(line.key, line.quantity - 1)}>
-                                                    −
-                                                </button>
-                                                <span>{line.quantity}</span>
-                                                <button
-                                                    aria-label={copy.increaseQuantity}
-                                                    onClick={() => updateQuantity(line.key, line.quantity + 1)}>
-                                                    +
-                                                </button>
+                                                <div className='line-quantity-actions'>
+                                                    <button
+                                                        type='button'
+                                                        aria-label={copy.decreaseQuantity}
+                                                        onClick={() => updateQuantity(line.key, line.quantity - 1)}>
+                                                        <span className='quantity-symbol'>−</span>
+                                                    </button>
+                                                    <span>{line.quantity}</span>
+                                                    <button
+                                                        type='button'
+                                                        aria-label={copy.increaseQuantity}
+                                                        onClick={() => updateQuantity(line.key, line.quantity + 1)}>
+                                                        <span className='quantity-symbol'>+</span>
+                                                    </button>
+                                                </div>
+                                                <div className='line-item-actions'>
+                                                    <button
+                                                        className='icon-button'
+                                                        type='button'
+                                                        aria-label={copy.customise}
+                                                        onClick={() => item && openItem(item, line)}>
+                                                        <svg viewBox='0 0 24 24' aria-hidden='true'>
+                                                            <path d='m4 16.5-.8 4.3 4.3-.8L19.1 8.4l-3.5-3.5L4 16.5Z' />
+                                                            <path d='m13.8 6.7 3.5 3.5' />
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        className='cart-remove-button'
+                                                        type='button'
+                                                        aria-label={copy.remove}
+                                                        onClick={() => updateQuantity(line.key, 0)}>
+                                                        <svg viewBox='0 0 24 24' aria-hidden='true'>
+                                                            <path d='M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6' />
+                                                        </svg>
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+                                        </Fragment>
                                     )
                                 })}
                             </div>
@@ -585,7 +644,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 <h2>{label(selected.names)}</h2>
                             </div>
                             <button className='icon-button' onClick={() => setSelected(null)} aria-label={copy.cancel}>
-                                ×
+                                <span className='modal-close-symbol'>×</span>
                             </button>
                         </div>
                         <div className='quantity-row'>
@@ -594,13 +653,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 <button
                                     aria-label={copy.decreaseQuantity}
                                     onClick={() => setQuantity((value) => Math.max(1, value - 1))}>
-                                    −
+                                    <span className='quantity-symbol'>−</span>
                                 </button>
                                 <strong>{quantity}</strong>
                                 <button
                                     aria-label={copy.increaseQuantity}
                                     onClick={() => setQuantity((value) => value + 1)}>
-                                    +
+                                    <span className='quantity-symbol'>+</span>
                                 </button>
                             </div>
                         </div>
@@ -683,7 +742,6 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             <textarea
                                 value={note}
                                 maxLength={40}
-                                placeholder={copy.notePlaceholder}
                                 onChange={(event) => setNote(event.target.value)}
                             />
                         </label>

@@ -1,8 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { type Locale, t } from '@/lib/i18n'
+import CartLineItem from '@/components/CartLineItem'
+import CartPanelHeader from '@/components/CartPanelHeader'
+import MobileCategoryTabs from '@/components/MobileCategoryTabs'
+import MobileMenuItemCard from '@/components/MobileMenuItemCard'
+import MobileStoreFooter from '@/components/MobileStoreFooter'
+import MenuLoadingState from '@/components/MenuLoadingState'
+import { storeFooter } from '@/lib/storeFooter'
 
 type Text = Record<Locale, string>
 type Choice = { id: string; names: Text }
@@ -101,6 +108,8 @@ export default function OnlineOrder() {
     })
     const [promotionTotal, setPromotionTotal] = useState<number | null>(null)
     const [selected, setSelected] = useState<MenuItem | null>(null)
+    const [customiseSheetFull, setCustomiseSheetFull] = useState(false)
+    const [editingLineKey, setEditingLineKey] = useState<string | null>(null)
     const [quantity, setQuantity] = useState(1)
     const [variant, setVariant] = useState('')
     const [noteOptions, setNoteOptions] = useState<string[]>([])
@@ -119,23 +128,47 @@ export default function OnlineOrder() {
     const [turnstileToken, setTurnstileToken] = useState('')
     const [turnstileError, setTurnstileError] = useState(false)
     const widgetId = useRef<string | null>(null)
+    const customiseSheetRef = useRef<HTMLElement | null>(null)
     const quoteCache = useRef<{ key: string; total: number; expiresAt: number } | null>(null)
     const [completed, setCompleted] = useState<number | null>(null)
     const copy = t(locale)
     const base = ''
-    useEffect(() => {
+    useLayoutEffect(() => {
         const modalOpen = Boolean(selected || cartOpen || checkoutOpen)
         if (!modalOpen) return
         const previousOverflow = document.body.style.overflow
         const previousPaddingRight = document.body.style.paddingRight
+        const previousHtmlOverflow = document.documentElement.style.overflow
         const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
         document.body.style.overflow = 'hidden'
+        document.documentElement.style.overflow = 'hidden'
         if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`
+        if (selected) customiseSheetRef.current?.scrollTo({ top: 0, behavior: 'auto' })
         return () => {
             document.body.style.overflow = previousOverflow
             document.body.style.paddingRight = previousPaddingRight
+            document.documentElement.style.overflow = previousHtmlOverflow
         }
     }, [selected, cartOpen, checkoutOpen])
+    useLayoutEffect(() => {
+        if (!selected) {
+            setCustomiseSheetFull(false)
+            return
+        }
+        const sheet = customiseSheetRef.current
+        if (!sheet) return
+        const updateHeightState = () => {
+            setCustomiseSheetFull(sheet.getBoundingClientRect().height >= window.innerHeight - 1)
+        }
+        updateHeightState()
+        const observer = new ResizeObserver(updateHeightState)
+        observer.observe(sheet)
+        window.addEventListener('resize', updateHeightState)
+        return () => {
+            observer.disconnect()
+            window.removeEventListener('resize', updateHeightState)
+        }
+    }, [selected])
     const label = (value: Text) => value[locale] || value.vi
     useEffect(() => {
         window.localStorage.setItem(cartStorageKey, JSON.stringify(cart))
@@ -307,6 +340,7 @@ export default function OnlineOrder() {
 
     const openItem = (item: MenuItem, line?: CartLine) => {
         setSelected(item)
+        setEditingLineKey(line?.key || null)
         setQuantity(line?.quantity || 1)
         setVariant(line?.variant || item.variants[0]?.id || '')
         setNoteOptions(line?.noteOptions || [])
@@ -314,22 +348,31 @@ export default function OnlineOrder() {
         setNote(line?.note || '')
         setComponentSelections(line?.componentSelections || (item.components || []).flatMap((component) => Array.from({ length: component.quantity }, (_, index) => ({ componentId: `${component.componentId}-${index}`, itemId: component.itemId, noteOptions: [], note: '' }))))
     }
+    const closeItem = () => {
+        const wasEditing = Boolean(editingLineKey)
+        setSelected(null)
+        setEditingLineKey(null)
+        if (wasEditing) setCartOpen(true)
+    }
     const addToCart = () => {
         if (!selected) return
-        setCart((old) => [
-            ...old,
-            {
-                key: createKey(),
-                itemId: selected.id,
-                quantity,
-                variant: variant || undefined,
-                noteOptions: selected.type === 'combo' ? [] : noteOptions,
-                addonIds: selected.type === 'combo' ? [] : addonIds,
-                note: note.trim() || undefined,
-                componentSelections: selected.type === 'combo' ? componentSelections : undefined,
-            },
-        ])
+        const wasEditing = Boolean(editingLineKey)
+        const nextLine: CartLine = {
+            key: editingLineKey || createKey(),
+            itemId: selected.id,
+            quantity,
+            variant: variant || undefined,
+            noteOptions: selected.type === 'combo' ? [] : noteOptions,
+            addonIds: selected.type === 'combo' ? [] : addonIds,
+            note: note.trim() || undefined,
+            componentSelections: selected.type === 'combo' ? componentSelections : undefined,
+        }
+        setCart((old) =>
+            editingLineKey ? old.map((line) => (line.key === editingLineKey ? nextLine : line)) : [...old, nextLine],
+        )
         setSelected(null)
+        setEditingLineKey(null)
+        if (wasEditing) setCartOpen(true)
     }
     const updateQuantity = (key: string, next: number) =>
         setCart((old) =>
@@ -377,19 +420,10 @@ export default function OnlineOrder() {
 
     if (loading || failed)
         return (
-            <main className='page online-loading-page'>
-                <section className='card' aria-live='polite'>
-                    <img className='error-logo' src='/logo.png' alt='' width='96' height='96' />
-                    {failed && (
-                        <>
-                            <h1>{copy.menuUnavailable}</h1>
-                            <p>
-                                {orderRateLimited ? copy.onlineOrderRateLimited : copy.menuUnavailableDescription}
-                            </p>
-                        </>
-                    )}
-                </section>
-            </main>
+            <MenuLoadingState
+                title={failed ? copy.menuUnavailable : undefined}
+                description={failed ? (orderRateLimited ? copy.onlineOrderRateLimited : copy.menuUnavailableDescription) : undefined}
+            />
         )
     if (completed !== null)
         return (
@@ -414,60 +448,80 @@ export default function OnlineOrder() {
 
     return (
         <main className='online-shell'>
-            <header className='online-header'>
-                <div className='online-brand-intro'>
-                    <div className='online-brand-mark'>
-                        <img src='/logo.png' alt='' width='72' height='72' />
-                    </div>
-                    <div>
-                        <h1>Mam Mi</h1>
-                        <p>{copy.onlineMenuDescription}</p>
-                    </div>
+            <div className='online-menu-sticky'>
+            <header className='menu-header online-header online-menu-header'>
+                <div className='brand-lockup'>
+                    <img src='/logo.png' alt='' width='72' height='72' />
                 </div>
-                <label className='locale-picker'>
-                    <span className='sr-only'>{copy.language}</span>
-                    <select
-                        value={locale}
-                        onChange={(event) => {
-                            const next = event.target.value as Locale
-                            setLocale(next)
-                            window.localStorage.setItem(localeStorageKey, next)
-                        }}>
-                        <option value='vi'>VI</option>
-                        <option value='en'>EN</option>
-                        <option value='zh-TW'>繁中</option>
-                    </select>
-                </label>
+                <div className='header-meta'>
+                    <button className='header-cart online-header-cart' onClick={() => setCartOpen(true)} aria-label={copy.cart}>
+                        <span aria-hidden='true'>🛒</span>
+                        <strong>{count}</strong>
+                    </button>
+                    <label className='locale-picker'>
+                        <span className='sr-only'>{copy.language}</span>
+                        <select
+                            value={locale}
+                            onChange={(event) => {
+                                const next = event.target.value as Locale
+                                setLocale(next)
+                                window.localStorage.setItem(localeStorageKey, next)
+                            }}>
+                            <option value='vi'>VI</option>
+                            <option value='en'>EN</option>
+                            <option value='zh-TW'>繁中</option>
+                        </select>
+                    </label>
+                </div>
             </header>
+            <MobileCategoryTabs
+                tabs={[{ id: 'all', label: copy.all }, ...categories.map((entry) => ({ id: entry.id, label: label(entry.names) }))]}
+                selectedId={category}
+                ariaLabel={copy.categories}
+                onSelect={setCategory}
+            />
+            <nav className='category-tabs !hidden sm:!flex' aria-label={copy.categories}>
+                <button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>
+                    {copy.all}
+                </button>
+                {categories.map((entry) => (
+                    <button
+                        key={entry.id}
+                        className={category === entry.id ? 'active' : ''}
+                        onClick={() => setCategory(entry.id)}>
+                        {label(entry.names)}
+                    </button>
+                ))}
+            </nav>
+            </div>
             <div className='online-layout'>
                 <section>
-                    <div className='online-type'>
-                        <span>{copy.orderType}</span>
-                        <button className={type === 'dine_in' ? 'selected' : ''} onClick={() => setType('dine_in')}>
-                            {copy.dineIn}
-                        </button>
-                        <button className={type === 'takeaway' ? 'selected' : ''} onClick={() => setType('takeaway')}>
-                            {copy.takeaway}
-                        </button>
-                    </div>
-                    <nav className='category-tabs' aria-label={copy.categories}>
-                        <button className={category === 'all' ? 'active' : ''} onClick={() => setCategory('all')}>
-                            {copy.all}
-                        </button>
-                        {categories.map((entry) => (
-                            <button
-                                key={entry.id}
-                                className={category === entry.id ? 'active' : ''}
-                                onClick={() => setCategory(entry.id)}>
-                                {label(entry.names)}
-                            </button>
-                        ))}
-                    </nav>
                     <div className='menu-grid'>
                         {visibleItems.map((item) => {
                             const displayPrice = item.displayPrice ?? item.price
                             return (
-                                <article className='menu-card online-menu-card' key={item.id}>
+                                <Fragment key={item.id}>
+                                    <MobileMenuItemCard
+                                        name={label(item.names)}
+                                        description={label(item.description)}
+                                        imageUrl={item.imageUrl}
+                                        badge={
+                                            item.recommended
+                                                ? copy.recommended
+                                                : item.popular
+                                                  ? copy.popular
+                                                  : item.new
+                                                    ? copy.newProduct
+                                                    : item.promotion
+                                                      ? copy.promotion
+                                                      : undefined
+                                        }
+                                        price={formatPrice(displayPrice, locale)}
+                                        originalPrice={displayPrice < item.price ? formatPrice(item.price, locale) : undefined}
+                                        addLabel={copy.add}
+                                        onAdd={() => openItem(item)}
+                                    />
+                                <article className='menu-card online-menu-card !hidden sm:!flex'>
                                     <div className='dish-art' aria-hidden='true'>
                                         {item.imageUrl ? <img src={item.imageUrl} alt='' /> : '🍽️'}
                                     </div>
@@ -498,6 +552,7 @@ export default function OnlineOrder() {
                                         </div>
                                     </div>
                                 </article>
+                                </Fragment>
                             )
                         })}
                     </div>
@@ -509,12 +564,19 @@ export default function OnlineOrder() {
                 </button>
                 {cartOpen && <div className='cart-drawer-backdrop' onMouseDown={() => setCartOpen(false)} />}
                 {cartOpen && <aside className='online-cart'>
-                    <div className='cart-heading'>
+                    <CartPanelHeader
+                        cartLabel={copy.cart}
+                        count={count}
+                        itemLabel={copy.item}
+                        total={formatPrice(total, locale)}
+                        closeLabel={copy.cancel}
+                        onClose={() => setCartOpen(false)}
+                        className='sm:!hidden'
+                    />
+                    <div className='cart-heading !hidden sm:!flex'>
                         <div>
                             <p className='eyebrow'>{copy.cart}</p>
-                            <span>
-                                {count} {copy.item}
-                            </span>
+                            <span>{count} {copy.item}</span>
                         </div>
                         <strong>{formatPrice(total, locale)}</strong>
                     </div>
@@ -525,21 +587,63 @@ export default function OnlineOrder() {
                             {cart.map((line) => {
                                 const item = items.find((candidate) => candidate.id === line.itemId)
                                 return (
-                                    <div className='cart-line' key={line.key}>
+                                    <Fragment key={line.key}>
+                                        <CartLineItem
+                                            name={item ? label(item.names) : ''}
+                                            price={formatPrice(linePrice(line) * line.quantity, locale)}
+                                            quantity={line.quantity}
+                                            decreaseLabel={copy.decreaseQuantity}
+                                            increaseLabel={copy.increaseQuantity}
+                                            customiseLabel={copy.customise}
+                                            removeLabel={copy.remove}
+                                            onDecrease={() => updateQuantity(line.key, line.quantity - 1)}
+                                            onIncrease={() => updateQuantity(line.key, line.quantity + 1)}
+                                            onCustomise={() => {
+                                                if (!item) return
+                                                setCartOpen(false)
+                                                openItem(item, line)
+                                            }}
+                                            onRemove={() => updateQuantity(line.key, 0)}
+                                        />
+                                    <div className='cart-line !hidden sm:!flex'>
                                         <div>
                                             <strong>{item ? label(item.names) : ''}</strong>
-                                            <small>{formatPrice(linePrice(line) * line.quantity, locale)}</small>
+                                            <small className='line-price'>{formatPrice(linePrice(line) * line.quantity, locale)}</small>
                                         </div>
                                         <div className='line-actions'>
-                                            <button onClick={() => updateQuantity(line.key, line.quantity - 1)}>
-                                                −
-                                            </button>
-                                            <span>{line.quantity}</span>
-                                            <button onClick={() => updateQuantity(line.key, line.quantity + 1)}>
-                                                +
-                                            </button>
+                                            <div className='line-quantity-actions'>
+                                                <button type='button' aria-label={copy.decreaseQuantity} onClick={() => updateQuantity(line.key, line.quantity - 1)}>
+                                                    <span className='quantity-symbol'>−</span>
+                                                </button>
+                                                <span>{line.quantity}</span>
+                                                <button type='button' aria-label={copy.increaseQuantity} onClick={() => updateQuantity(line.key, line.quantity + 1)}>
+                                                    <span className='quantity-symbol'>+</span>
+                                                </button>
+                                            </div>
+                                            <div className='line-item-actions'>
+                                                <button
+                                                    className='icon-button'
+                                                    type='button'
+                                                    aria-label={copy.customise}
+                                                    onClick={() => {
+                                                        if (!item) return
+                                                        setCartOpen(false)
+                                                        openItem(item, line)
+                                                    }}>
+                                                    <svg viewBox='0 0 24 24' aria-hidden='true'>
+                                                        <path d='m4 16.5-.8 4.3 4.3-.8L19.1 8.4l-3.5-3.5L4 16.5Z' />
+                                                        <path d='m13.8 6.7 3.5 3.5' />
+                                                    </svg>
+                                                </button>
+                                                <button className='cart-remove-button' type='button' aria-label={copy.remove} onClick={() => updateQuantity(line.key, 0)}>
+                                                    <svg viewBox='0 0 24 24' aria-hidden='true'>
+                                                        <path d='M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6' />
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
+                                    </Fragment>
                                 )
                             })}
                         </div>
@@ -553,13 +657,22 @@ export default function OnlineOrder() {
                         }}>
                         {copy.continueOrder}
                     </button>
-                    <button className='cart-close' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
+                    <button className='cart-close !hidden sm:!grid' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
                 </aside>}
             </div>
+            <MobileStoreFooter
+                name={storeFooter.name}
+                hoursLabel={copy.businessHours}
+                hours={storeFooter.hours}
+                phone={storeFooter.phone}
+                address={storeFooter.address}
+                copyright={storeFooter.copyright}
+            />
             {selected && (
-                <div className='modal-backdrop' onMouseDown={() => setSelected(null)}>
+                <div className='modal-backdrop' onMouseDown={closeItem}>
                     <section
-                        className='customise-sheet'
+                        className={`customise-sheet${customiseSheetFull ? ' is-full-height' : ''}`}
+                        ref={customiseSheetRef}
                         role='dialog'
                         aria-modal='true'
                         onMouseDown={(event) => event.stopPropagation()}>
@@ -568,16 +681,16 @@ export default function OnlineOrder() {
                                 <p className='eyebrow'>{copy.customise}</p>
                                 <h2>{label(selected.names)}</h2>
                             </div>
-                            <button className='icon-button' onClick={() => setSelected(null)} aria-label={copy.cancel}>
-                                ×
+                            <button className='icon-button' onClick={closeItem} aria-label={copy.cancel}>
+                                <span className='modal-close-symbol'>×</span>
                             </button>
                         </div>
                         <div className='quantity-row'>
                             <span>{copy.quantity}</span>
                             <div className='stepper'>
-                                <button onClick={() => setQuantity((value) => Math.max(1, value - 1))}>−</button>
+                                <button onClick={() => setQuantity((value) => Math.max(1, value - 1))}><span className='quantity-symbol'>−</span></button>
                                 <strong>{quantity}</strong>
-                                <button onClick={() => setQuantity((value) => value + 1)}>+</button>
+                                <button onClick={() => setQuantity((value) => value + 1)}><span className='quantity-symbol'>+</span></button>
                             </div>
                         </div>
                         {selected.variants.length > 0 && (
@@ -638,7 +751,6 @@ export default function OnlineOrder() {
                             <textarea
                                 value={note}
                                 maxLength={40}
-                                placeholder={copy.notePlaceholder}
                                 onChange={(event) => setNote(event.target.value)}
                             />
                         </label>
@@ -657,29 +769,37 @@ export default function OnlineOrder() {
                                 )}
                             </strong>
                             <button className='primary-button' onClick={addToCart}>
-                                {copy.addToCart}
+                                {editingLineKey ? copy.updateItem : copy.addToCart}
                             </button>
                         </div>
                     </section>
                 </div>
             )}
             {checkoutOpen && (
-                <div className='modal-backdrop' onMouseDown={() => setCheckoutOpen(false)}>
+                <div className='modal-backdrop fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-6 max-[649px]:items-end max-[649px]:p-0' onMouseDown={() => setCheckoutOpen(false)}>
                     <section
-                        className='checkout-card'
+                        className='checkout-card flex h-auto max-h-[min(88svh,760px)] w-full max-w-[560px] flex-col overflow-x-hidden overflow-y-auto bg-surface p-8 shadow-2xl max-[649px]:h-svh max-[649px]:max-h-svh max-[649px]:max-w-none max-[649px]:rounded-none max-[649px]:px-[18px] max-[649px]:pt-[22px] max-[649px]:pb-[calc(22px+env(safe-area-inset-bottom))]'
                         role='dialog'
                         aria-modal='true'
                         onMouseDown={(event) => event.stopPropagation()}>
                         <div className='sheet-title'>
                             <div>
                                 <p className='eyebrow'>{copy.checkout}</p>
-                                <h2>{type === 'dine_in' ? copy.dineIn : copy.takeaway}</h2>
                             </div>
                             <button
                                 className='icon-button'
                                 onClick={() => setCheckoutOpen(false)}
                                 aria-label={copy.cancel}>
-                                ×
+                                <span className='checkout-close-symbol'>×</span>
+                            </button>
+                        </div>
+                        <div className='online-type checkout-order-type'>
+                            <span>{copy.orderType}</span>
+                            <button type='button' className={type === 'dine_in' ? 'selected' : ''} onClick={() => setType('dine_in')}>
+                                {copy.dineIn}
+                            </button>
+                            <button type='button' className={type === 'takeaway' ? 'selected' : ''} onClick={() => setType('takeaway')}>
+                                {copy.takeaway}
                             </button>
                         </div>
                         <label>
@@ -711,8 +831,8 @@ export default function OnlineOrder() {
                         </label>
                         <div className='turnstile-slot' />
                         <button
-                            className='primary-button'
-                            disabled={!customer.phone.trim() || !turnstileToken || turnstileError || sending}
+                            className='primary-button !bg-primary !text-primary-foreground'
+                            disabled={!cart.length || !customer.phone.trim() || !turnstileToken || turnstileError || sending}
                             onClick={() => void confirm()}>
                             {copy.sendOrder}
                         </button>

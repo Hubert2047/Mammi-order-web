@@ -30,84 +30,6 @@ type CartItem = {
 }
 
 const text = (vi: string, en: string, zh: string): Text => ({ vi, en, 'zh-TW': zh })
-const sampleMenu: MenuItem[] = [
-    {
-        id: 'beef-pho',
-        category: text('Món nước', 'Noodle soup', '湯麵'),
-        names: text('Phở bò đặc biệt', 'Special beef pho', '特製牛肉河粉'),
-        description: text(
-            'Nước dùng ninh chậm, bò tái và gầu.',
-            'Slow-simmered broth with rare beef and brisket.',
-            '慢燉高湯，搭配生牛肉與牛腩。',
-        ),
-        price: 150,
-        variants: [
-            { id: 'regular', names: text('Thường', 'Regular', '一般') },
-            { id: 'large', names: text('Tô lớn', 'Large', '大碗') },
-        ],
-        noteOptions: [
-            { id: 'no-onion', names: text('Không hành', 'No onion', '不要洋蔥') },
-            { id: 'no-cilantro', names: text('Không ngò', 'No cilantro', '不要香菜') },
-        ],
-        addons: [
-            { id: 'beef', names: text('Thêm bò', 'Extra beef', '加牛肉'), priceExtra: 50 },
-            { id: 'egg', names: text('Trứng lòng đào', 'Soft egg', '溏心蛋'), priceExtra: 25 },
-        ],
-        art: '🍜',
-    },
-    {
-        id: 'chicken-rice',
-        category: text('Cơm', 'Rice', '飯類'),
-        names: text('Cơm gà xối mỡ', 'Crispy chicken rice', '脆皮雞肉飯'),
-        description: text(
-            'Gà giòn, cơm thơm và nước sốt nhà làm.',
-            'Crispy chicken, fragrant rice and house sauce.',
-            '酥脆雞肉、香米與自製醬汁。',
-        ),
-        price: 135,
-        variants: [],
-        noteOptions: [{ id: 'no-cucumber', names: text('Không dưa leo', 'No cucumber', '不要小黃瓜') }],
-        addons: [
-            { id: 'rice', names: text('Thêm cơm', 'Extra rice', '加飯'), priceExtra: 20 },
-            { id: 'fried-egg', names: text('Trứng ốp la', 'Fried egg', '煎蛋'), priceExtra: 20 },
-        ],
-        art: '🍗',
-    },
-    {
-        id: 'spring-rolls',
-        category: text('Món ăn kèm', 'Sides', '小菜'),
-        names: text('Chả giò tôm thịt', 'Prawn spring rolls', '鮮蝦春捲'),
-        description: text(
-            'Cuốn tươi, rau thơm và sốt đậu phộng.',
-            'Fresh rolls with herbs and peanut sauce.',
-            '新鮮春捲、香草與花生醬。',
-        ),
-        price: 85,
-        variants: [],
-        noteOptions: [],
-        addons: [],
-        art: '🥢',
-    },
-    {
-        id: 'lemongrass-tea',
-        category: text('Đồ uống', 'Drinks', '飲品'),
-        names: text('Trà sả tắc', 'Lemongrass citrus tea', '香茅柑橘茶'),
-        description: text(
-            'Mát lạnh, thơm sả tươi.',
-            'Iced and fragrant with fresh lemongrass.',
-            '冰涼清新，帶有新鮮香茅香氣。',
-        ),
-        price: 55,
-        variants: [
-            { id: 'less-sweet', names: text('Ít ngọt', 'Less sweet', '少糖') },
-            { id: 'normal', names: text('Bình thường', 'Regular', '正常甜') },
-        ],
-        noteOptions: [{ id: 'no-ice', names: text('Không đá', 'No ice', '去冰') }],
-        addons: [],
-        art: '🧋',
-    },
-]
-
 export default function OrderingExperience({ qrToken }: { qrToken: string }) {
     const [locale, setLocale] = useState<Locale>('vi')
     const [category, setCategory] = useState('all')
@@ -472,12 +394,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
                         )}
                         <label className='note-field'>
                             <span>{copy.note}</span>
-                            <textarea
-                                value={note}
-                                maxLength={40}
-                                placeholder={copy.notePlaceholder}
-                                onChange={(event) => setNote(event.target.value)}
-                            />
+                            <textarea value={note} maxLength={40} onChange={(event) => setNote(event.target.value)} />
                         </label>
                         <div className='sheet-footer'>
                             <strong>
