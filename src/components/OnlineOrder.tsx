@@ -624,16 +624,16 @@ export default function OnlineOrder() {
         />
       )}
       <main
-        className={`online-shell min-[650px]:!w-full min-[650px]:!max-w-[1160px] min-[650px]:!bg-transparent min-[650px]:!px-7 min-[650px]:!pt-6 min-[650px]:!pb-[72px] transition-[opacity,transform] duration-300 ease-out ${menuReady ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
+        className={`online-shell min-[650px]:!w-full min-[650px]:!max-w-[1160px] min-[650px]:!bg-transparent min-[650px]:!px-7 min-[650px]:!pb-[72px] transition-[opacity,transform] duration-300 ease-out ${menuReady ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
       >
         <div className="online-menu-sticky min-[650px]:!static min-[650px]:!m-0 min-[650px]:!w-auto min-[650px]:!bg-transparent min-[650px]:!p-0">
           <header className="menu-header online-header online-menu-header max-[649px]:!grid-cols-[1fr_auto_1fr] max-[649px]:!items-center min-[650px]:!min-h-[82px] min-[650px]:!m-0 min-[650px]:!w-full min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#dcebd0] min-[650px]:!bg-white/85 min-[650px]:!p-[15px_18px] min-[650px]:!shadow-[0_12px_30px_rgba(61,75,55,0.1)]">
             <div className="brand-lockup max-[649px]:!col-start-1 max-[649px]:!row-start-1 max-[649px]:!flex max-[649px]:!items-center max-[649px]:!justify-self-start min-[650px]:!flex min-[650px]:!gap-[13px]">
               <img
-                className="max-[649px]:!col-start-2 max-[649px]:!row-start-1 max-[649px]:!justify-self-center min-[650px]:!h-16 min-[650px]:!w-28 min-[650px]:!rounded-none min-[650px]:!bg-transparent min-[650px]:!object-contain"
+                className="max-[649px]:!col-start-2 max-[649px]:!row-start-1 max-[649px]:!justify-self-center max-[649px]:!h-16 max-[649px]:!w-16 min-[650px]:!h-16 min-[650px]:!w-16 min-[650px]:!rounded-none min-[650px]:!bg-transparent min-[650px]:!object-contain"
                 src="/logo.png"
                 alt=""
-                width="112"
+                width="64"
                 height="64"
               />
               <strong className="block max-[649px]:text-[1.25rem] max-[649px]:font-black max-[649px]:tracking-[-0.03em] max-[649px]:text-[#294b2d] min-[650px]:text-[1.8rem] min-[650px]:font-black min-[650px]:tracking-[-0.04em] min-[650px]:text-[#294b2d]">
@@ -688,8 +688,9 @@ export default function OnlineOrder() {
             className="max-[649px]:!mt-0 max-[649px]:!pt-1"
             onSelect={setCategory}
           />
-          <nav
-            className="category-tabs !hidden min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-x-auto min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
+        </div>
+        <nav
+            className="category-tabs !hidden min-[650px]:!sticky min-[650px]:!top-0 min-[650px]:!z-10 min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-x-auto min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
             aria-label={copy.categories}
           >
             <button
@@ -709,8 +710,7 @@ export default function OnlineOrder() {
                 {label(entry.names)}
               </button>
             ))}
-          </nav>
-        </div>
+        </nav>
         <div className="online-layout min-[650px]:!block min-[650px]:!pt-[22px]">
           <section>
             <div

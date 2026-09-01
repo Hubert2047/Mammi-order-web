@@ -1447,9 +1447,11 @@ html:has(.online-shell) {
   transform: translateY(-16px);
 }
 .online-loading-page .error-logo {
+  aspect-ratio: 1 / 1;
   width: 220px;
   height: 220px;
   margin: 0;
+  object-fit: contain;
 }
 .online-loading-page .card:has(h1) .error-logo {
   margin-bottom: 24px;
@@ -1877,7 +1879,7 @@ body:has(.online-shell) {
 .online-shell .online-menu-header {
   padding: 0;
 }
-.online-menu-sticky .category-tabs {
+.online-shell .category-tabs {
   position: static;
   display: flex;
   flex-wrap: wrap;
@@ -1887,7 +1889,7 @@ body:has(.online-shell) {
   padding: 0 0 10px;
   background: #fff;
 }
-.online-menu-sticky .category-tabs button {
+.online-shell .category-tabs button {
   position: relative;
   flex: 0 0 auto;
   border: 0;
@@ -1897,7 +1899,7 @@ body:has(.online-shell) {
   color: #6b7280;
   font-weight: 600;
 }
-.online-menu-sticky .category-tabs button::after {
+.online-shell .category-tabs button::after {
   display: block;
   position: absolute;
   right: 0;
@@ -1913,10 +1915,10 @@ body:has(.online-shell) {
     opacity 0.2s ease,
     transform 0.2s ease;
 }
-.online-menu-sticky .category-tabs button.active {
+.online-shell .category-tabs button.active {
   color: #5f8c25;
 }
-.online-menu-sticky .category-tabs button.active::after {
+.online-shell .category-tabs button.active::after {
   opacity: 1;
   transform: scaleX(1);
 }

@@ -8,8 +8,8 @@ export const metadata: Metadata = {
     applicationName: 'Mammi Order',
     icons: {
         icon: [
-            { url: '/logo.png?v=1.0', type: 'image/png', sizes: '512x512' },
-            { url: '/logo.png?v=1.0', type: 'image/png', rel: 'shortcut icon' },
+            { url: '/favicon.png?v=1.0', type: 'image/png', media: '(prefers-color-scheme: dark)' },
+            { url: '/logo.png?v=1.0', type: 'image/png', media: '(prefers-color-scheme: light)' },
         ],
         shortcut: '/logo.png?v=1.0',
         apple: '/logo.png?v=1.0',
