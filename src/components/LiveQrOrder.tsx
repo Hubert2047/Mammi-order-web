@@ -702,7 +702,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         )}
                         {selected.type === 'combo' && (selected.components?.length || 0) > 0 && (
                             <fieldset className='combo-components-fieldset'>
-                                <legend>{copy.comboComponents || copy.customise}</legend>
+                                <legend>{copy.comboComponents}</legend>
                                 <div className='component-list'>
                                     {componentSelections.map((selection, index) => {
                                         const component = selected.components?.find((entry) => selection.componentId.startsWith(entry.componentId))
