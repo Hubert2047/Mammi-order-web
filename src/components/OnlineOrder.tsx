@@ -167,6 +167,7 @@ export default function OnlineOrder() {
   const [pricingChanged, setPricingChanged] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [openingCart, setOpeningCart] = useState(false);
+  const [quoteLoading, setQuoteLoading] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState(false);
@@ -343,23 +344,25 @@ export default function OnlineOrder() {
   const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
 
-  const openCart = async () => {
-    if (!cart.length) {
+  const openCart = async (nextCart = cart, fullPageLoading = true) => {
+    if (!nextCart.length) {
       setCartOpen(true);
       return;
     }
     if (!cartToken) return;
 
-    const lines = cart.map(({ key, ...line }) => line);
+    const lines = nextCart.map(({ key, ...line }) => line);
     const quoteKey = JSON.stringify(lines);
     const cached = quoteCache.current;
     if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
       setPromotionTotal(cached.total);
+      setQuoteLoading(false);
       setCartOpen(true);
       return;
     }
 
-    setOpeningCart(true);
+    if (fullPageLoading) setOpeningCart(true);
+    else setQuoteLoading(true);
     try {
       const response = await fetch(`${base}/api/public/carts/${cartToken}/preview`, {
         method: "POST",
@@ -381,7 +384,8 @@ export default function OnlineOrder() {
       setPromotionTotal(quoteTotal);
       setCartOpen(true);
     } finally {
-      setOpeningCart(false);
+      if (fullPageLoading) setOpeningCart(false);
+      else setQuoteLoading(false);
     }
   };
 
@@ -564,14 +568,17 @@ export default function OnlineOrder() {
     setEditingLineKey(null);
     if (wasEditing) void openCart();
   };
-  const updateQuantity = (key: string, next: number) =>
-    setCart((old) =>
-      next < 1
-        ? old.filter((line) => line.key !== key)
-        : old.map((line) =>
-            line.key === key ? { ...line, quantity: next } : line,
-          ),
-    );
+  const updateQuantity = (key: string, next: number) => {
+    const nextCart = next < 1
+      ? cart.filter((line) => line.key !== key)
+      : cart.map((line) =>
+          line.key === key ? { ...line, quantity: next } : line,
+        );
+    setCart(nextCart);
+    if (cartOpen) {
+      void openCart(nextCart, false);
+    }
+  };
   const confirm = async () => {
     if (
       !cartToken ||
@@ -911,6 +918,7 @@ export default function OnlineOrder() {
                 itemLabel={copy.item}
                 total={formatPrice(total, locale)}
                 originalTotal={originalTotal}
+                isQuoteLoading={quoteLoading}
                 closeLabel={copy.cancel}
                 onClose={() => setCartOpen(false)}
                 className="sm:!hidden"
@@ -923,8 +931,14 @@ export default function OnlineOrder() {
                   </span>
                 </div>
                 <strong>
-                  {originalTotal && <del className="mr-2 text-sm font-normal text-gray-400">{originalTotal}</del>}
-                  {formatPrice(total, locale)}
+                  {quoteLoading ? (
+                    <span className="inline-block min-w-20 animate-pulse text-gray-300">…</span>
+                  ) : (
+                    <>
+                      {originalTotal && <del className="mr-2 text-sm font-normal text-gray-400">{originalTotal}</del>}
+                      {formatPrice(total, locale)}
+                    </>
+                  )}
                 </strong>
               </div>
               {cart.length === 0 ? (

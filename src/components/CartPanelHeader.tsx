@@ -4,6 +4,7 @@ type CartPanelHeaderProps = {
     itemLabel: string
     total: string
     originalTotal?: string
+    isQuoteLoading?: boolean
     closeLabel: string
     onClose: () => void
     className?: string
@@ -15,6 +16,7 @@ export default function CartPanelHeader({
     itemLabel,
     total,
     originalTotal,
+    isQuoteLoading = false,
     closeLabel,
     onClose,
     className = '',
@@ -26,8 +28,14 @@ export default function CartPanelHeader({
                     {cartLabel} · {count} {itemLabel}
                 </strong>
                 <small className='flex items-baseline gap-2 text-[1.2rem] font-extrabold leading-[1.3] text-[#8ac545]'>
-                    {originalTotal && <del className='text-[0.95rem] font-normal text-gray-400'>{originalTotal}</del>}
-                    <span>{total}</span>
+                    {isQuoteLoading ? (
+                        <span className='inline-block min-w-20 animate-pulse text-gray-300'>…</span>
+                    ) : (
+                        <>
+                            {originalTotal && <del className='text-[0.95rem] font-normal text-gray-400'>{originalTotal}</del>}
+                            <span>{total}</span>
+                        </>
+                    )}
                 </small>
             </div>
             <button

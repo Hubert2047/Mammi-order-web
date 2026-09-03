@@ -100,6 +100,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [completed, setCompleted] = useState<CompletedOrder | null>(null)
     const [cartOpen, setCartOpen] = useState(false)
     const [openingCart, setOpeningCart] = useState(false)
+    const [quoteLoading, setQuoteLoading] = useState(false)
     const [pricingChanged, setPricingChanged] = useState(false)
     const [editingKey, setEditingKey] = useState<string | null>(null)
     const menuGridRef = useRef<HTMLElement>(null)
@@ -325,23 +326,25 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         )
     }
 
-    const openCart = async () => {
-        if (!cart.length) {
+    const openCart = async (nextCart = cart, fullPageLoading = true) => {
+        if (!nextCart.length) {
             setCartOpen(true)
             return
         }
         if (!cartToken) return
 
-        const lines = cart.map(({ key, ...line }) => line)
+        const lines = nextCart.map(({ key, ...line }) => line)
         const quoteKey = JSON.stringify(lines)
         const cached = quoteCache.current
         if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
             setPromotionTotal(cached.total)
+            setQuoteLoading(false)
             setCartOpen(true)
             return
         }
 
-        setOpeningCart(true)
+        if (fullPageLoading) setOpeningCart(true)
+        else setQuoteLoading(true)
         try {
             const response = await fetch(`${base}/api/public/carts/${cartToken}/preview`, {
                 method: 'POST',
@@ -358,7 +361,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             setPromotionTotal(quoteTotal)
             setCartOpen(true)
         } finally {
-            setOpeningCart(false)
+            if (fullPageLoading) setOpeningCart(false)
+            else setQuoteLoading(false)
         }
     }
     const toggle = (id: string, current: string[], setCurrent: (next: string[]) => void) =>
@@ -382,12 +386,15 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         setEditingKey(null)
         setSelected(null)
     }
-    const updateQuantity = (key: string, nextQuantity: number) =>
-        setCart((old) =>
-            nextQuantity < 1
-                ? old.filter((line) => line.key !== key)
-                : old.map((line) => (line.key === key ? { ...line, quantity: nextQuantity } : line)),
-        )
+    const updateQuantity = (key: string, nextQuantity: number) => {
+        const nextCart = nextQuantity < 1
+            ? cart.filter((line) => line.key !== key)
+            : cart.map((line) => (line.key === key ? { ...line, quantity: nextQuantity } : line))
+        setCart(nextCart)
+        if (cartOpen) {
+            void openCart(nextCart, false)
+        }
+    }
     const confirm = async () => {
         if (!cartToken || !cart.length || sending) return
         setSending(true)
@@ -624,6 +631,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             itemLabel={copy.item}
                             total={formatPrice(total, locale)}
                             originalTotal={originalTotal}
+                            isQuoteLoading={quoteLoading}
                             closeLabel={copy.cancel}
                             onClose={() => setCartOpen(false)}
                             className='-mx-[max(18px,calc((100vw-680px)/2))] -mt-6 sm:!hidden'
@@ -632,8 +640,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             <div>
                                 <strong>{copy.cart} · {count} {copy.item}</strong>
                                 <small className='cart-total'>
-                                    {originalTotal && <del className='mr-2 text-sm font-normal text-gray-400'>{originalTotal}</del>}
-                                    {formatPrice(total, locale)}
+                                    {quoteLoading ? (
+                                        <span className='inline-block min-w-20 animate-pulse text-gray-300'>…</span>
+                                    ) : (
+                                        <>
+                                            {originalTotal && <del className='mr-2 text-sm font-normal text-gray-400'>{originalTotal}</del>}
+                                            {formatPrice(total, locale)}
+                                        </>
+                                    )}
                                 </small>
                             </div>
                             <button className='icon-button' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
