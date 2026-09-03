@@ -855,7 +855,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         {selected.addons.length > 0 && (
                             <fieldset>
                                 <legend>{copy.addons}</legend>
-                                <div className='addon-list'>
+                                <div className='addon-list qr-addon-list'>
                                     {selected.addons.map((addon) => {
                                         const displayPrice = addon.displayPrice ?? addon.priceExtra
                                         return (
