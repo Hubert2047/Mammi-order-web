@@ -14,7 +14,7 @@ import { storeFooter } from '@/lib/storeFooter'
 type Text = Record<Locale, string>
 type Choice = { id: string; names: Text }
 type OptionGroup = { id: string; names: Text; selection: 'single' | 'multiple'; required: boolean; defaultOptionId?: string; options: Choice[] }
-type Addon = Choice & { priceExtra: number; displayPrice?: number }
+type Addon = Choice & { priceExtra: number; displayPrice?: number; unavailable?: boolean }
 type Component = { componentId: string; itemId: string; quantity: number; names: Text; noteOptions: Choice[] }
 type ComponentSelection = { componentId: string; itemId: string; noteOptions: string[]; note?: string }
 type MenuItem = {
@@ -30,6 +30,7 @@ type MenuItem = {
     promotion?: boolean
     price: number
     displayPrice?: number
+    unavailable?: boolean
     variants: Choice[]
     optionGroups: OptionGroup[]
     noteOptions: Choice[]
@@ -519,6 +520,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 price={formatPrice(displayPrice, locale)}
                                 originalPrice={displayPrice < item.price ? formatPrice(item.price, locale) : undefined}
                                 addLabel={copy.add}
+                                badge={item.unavailable ? copy.unavailable : undefined}
+                                disabled={item.unavailable}
                                 onAdd={() => openItem(item)}
                             />
                         <article className='menu-card !hidden sm:!flex'>
@@ -537,7 +540,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                         )}
                                         {formatPrice(displayPrice, locale)}
                                     </strong>
-                                    <button onClick={() => openItem(item)}>{copy.add}</button>
+                                    <button disabled={item.unavailable} onClick={() => openItem(item)}>{item.unavailable ? copy.unavailable : copy.add}</button>
                                 </div>
                             </div>
                         </article>
@@ -790,9 +793,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                         return (
                                             <button
                                                 key={addon.id}
+                                                disabled={addon.unavailable}
                                                 className={addonIds.includes(addon.id) ? 'selected' : ''}
                                                 onClick={() => toggle(addon.id, addonIds, setAddonIds)}>
-                                                <span>{label(addon.names)}</span>
+                                                <span>{label(addon.names)}{addon.unavailable ? ` (${copy.unavailable})` : ''}</span>
                                                 <strong>
                                                     {displayPrice < addon.priceExtra && (
                                                         <small className='mr-1 line-through'>

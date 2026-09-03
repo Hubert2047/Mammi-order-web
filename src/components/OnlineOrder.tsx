@@ -21,7 +21,7 @@ import { storeFooter } from "@/lib/storeFooter";
 type Text = Record<Locale, string>;
 type Choice = { id: string; names: Text };
 type OptionGroup = { id: string; names: Text; selection: "single" | "multiple"; required: boolean; defaultOptionId?: string; options: Choice[] };
-type Addon = Choice & { priceExtra: number; displayPrice?: number };
+type Addon = Choice & { priceExtra: number; displayPrice?: number; unavailable?: boolean };
 type Component = {
   componentId: string;
   itemId: string;
@@ -48,6 +48,7 @@ type MenuItem = {
   promotion?: boolean;
   price: number;
   displayPrice?: number;
+  unavailable?: boolean;
   variants: Choice[];
   optionGroups: OptionGroup[];
   noteOptions: Choice[];
@@ -770,7 +771,9 @@ export default function OnlineOrder() {
                       description={label(item.description)}
                       imageUrl={item.imageUrl}
                       badge={
-                        item.recommended
+                        item.unavailable
+                          ? copy.unavailable
+                          : item.recommended
                           ? copy.recommended
                           : item.popular
                             ? copy.popular
@@ -786,11 +789,10 @@ export default function OnlineOrder() {
                           ? formatPrice(item.price, locale)
                           : undefined
                       }
-                      addLabel={
-                        onlineOrderingEnabled ? copy.add : copy.dineInOnlyNotice
-                      }
+                      addLabel={item.unavailable ? copy.unavailable : onlineOrderingEnabled ? copy.add : copy.dineInOnlyNotice}
+                      disabled={item.unavailable}
                       showAction={onlineOrderingEnabled}
-                      onAdd={() => onlineOrderingEnabled && openItem(item)}
+                      onAdd={() => onlineOrderingEnabled && !item.unavailable && openItem(item)}
                     />
                     <article className="menu-card online-menu-card !hidden min-[650px]:!flex min-[650px]:!min-h-[154px] min-[650px]:!flex-row min-[650px]:!rounded-[18px] min-[650px]:!border-[#dbe7d1] min-[650px]:!shadow-[0_7px_20px_rgba(61,75,55,0.1)] min-[650px]:hover:-translate-y-0.5 min-[650px]:hover:shadow-[0_12px_26px_rgba(61,75,55,0.15)]">
                       <div
@@ -808,12 +810,14 @@ export default function OnlineOrder() {
                         )}
                       </div>
                       <div className="menu-card-copy min-[650px]:!p-[15px_16px_14px]">
-                        {(item.recommended ||
+                        {(item.unavailable || item.recommended ||
                           item.popular ||
                           item.new ||
                           item.promotion) && (
                           <span className="menu-badge">
-                            {item.recommended
+                            {item.unavailable
+                              ? copy.unavailable
+                              : item.recommended
                               ? copy.recommended
                               : item.popular
                                 ? copy.popular
@@ -836,8 +840,8 @@ export default function OnlineOrder() {
                             {formatPrice(displayPrice, locale)}
                           </strong>
                           {onlineOrderingEnabled && (
-                            <button onClick={() => openItem(item)}>
-                              {copy.add}
+                            <button disabled={item.unavailable} onClick={() => !item.unavailable && openItem(item)}>
+                              {item.unavailable ? copy.unavailable : copy.add}
                             </button>
                           )}
                         </div>
@@ -1203,6 +1207,7 @@ export default function OnlineOrder() {
                       return (
                         <button
                           key={addon.id}
+                          disabled={addon.unavailable}
                           className={
                             addonIds.includes(addon.id) ? "selected" : ""
                           }
@@ -1214,7 +1219,7 @@ export default function OnlineOrder() {
                             )
                           }
                         >
-                          <span>{label(addon.names)}</span>
+                          <span>{label(addon.names)}{addon.unavailable ? ` (${copy.unavailable})` : ''}</span>
                           <strong>
                             {displayPrice < addon.priceExtra && (
                               <small className="mr-1 line-through">

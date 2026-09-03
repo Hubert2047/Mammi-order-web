@@ -6,6 +6,7 @@ type MobileMenuItemCardProps = {
     price: string
     originalPrice?: string
     addLabel: string
+    disabled?: boolean
     showAction?: boolean
     onAdd: () => void
 }
@@ -18,6 +19,7 @@ export default function MobileMenuItemCard({
     price,
     originalPrice,
     addLabel,
+    disabled = false,
     showAction = true,
     onAdd,
 }: MobileMenuItemCardProps) {
@@ -35,7 +37,7 @@ export default function MobileMenuItemCard({
                         {originalPrice && <small className='mr-1 text-inherit line-through'>{originalPrice}</small>}
                         {price}
                     </strong>
-                    {showAction && <button className='flex-none rounded-xl bg-[#2e4b2d] px-[13px] py-2 font-bold text-white' onClick={onAdd}>
+                    {showAction && <button disabled={disabled} className='flex-none rounded-xl bg-[#2e4b2d] px-[13px] py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50' onClick={onAdd}>
                         {addLabel}
                     </button>}
                 </div>
