@@ -66,6 +66,7 @@ type CartLine = {
   note?: string;
   componentSelections?: ComponentSelection[];
 };
+type UnavailableCartItem = { kind: "item" | "addon"; name: string; addonName: string };
 type OrderType = "dine_in" | "takeaway";
 
 declare global {
@@ -344,7 +345,7 @@ export default function OnlineOrder() {
       : catalogTotal;
   const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const unavailableCartItems = cart.flatMap((line) => {
+  const unavailableCartItems: UnavailableCartItem[] = cart.flatMap((line): UnavailableCartItem[] => {
     const item = items.find((candidate) => candidate.id === line.itemId);
     if (!item) return [];
     if (item.unavailable) return [{ kind: "item" as const, name: label(item.names), addonName: "" }];
