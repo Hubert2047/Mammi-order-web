@@ -227,6 +227,21 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         }
     }, [realtimeToken])
 
+    // The menu refreshes after catalog events, but the customise sheet keeps its
+    // own selected item. Refresh that copy too so a newly unavailable add-on is
+    // immediately disabled while the customer has the sheet open.
+    useEffect(() => {
+        if (!selected) return
+        const refreshed = items.find((item) => item.id === selected.id)
+        if (!refreshed) {
+            setSelected(null)
+            setAddonIds([])
+            return
+        }
+        setSelected(refreshed)
+        setAddonIds((current) => current.filter((addonId) => refreshed.addons.some((addon) => addon.id === addonId && !addon.unavailable)))
+    }, [items, selected?.id])
+
     useEffect(() => {
         if (!cartToken || loading || completed || !cartOpen) return
         const lines = cart.map(({ key, ...line }) => line)

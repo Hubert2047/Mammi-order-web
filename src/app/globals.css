@@ -1629,12 +1629,20 @@ html:has(.online-shell) {
     height: 100svh;
     max-height: 100svh;
     border-radius: 0;
-    padding: 22px 18px calc(22px + env(safe-area-inset-bottom));
+    /* Keep enough scrollable space after the last option for the sticky
+       price/add button footer to be fully visible above the mobile edge. */
+    padding: 22px 18px calc(112px + env(safe-area-inset-bottom));
   }
   .online-shell .customise-sheet .sheet-footer {
     bottom: -22px;
     margin: 22px -18px -22px;
     padding: 15px 18px calc(22px + env(safe-area-inset-bottom));
+  }
+
+  /* QR sheets have the same mobile footer: reserve scroll room so its price
+     and add button can be brought entirely above the viewport edge. */
+  .order-shell .customise-sheet {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
   }
 }
 @media (max-width: 360px) {
