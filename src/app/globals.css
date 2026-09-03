@@ -322,6 +322,13 @@ body:has(.order-shell) {
   background: #d1d5db;
   box-shadow: none;
 }
+.unavailable-label {
+  color: #dc2626;
+  font-weight: 800;
+}
+.menu-card-footer button:disabled .unavailable-label {
+  color: #dc2626;
+}
 .cart-dock {
   position: fixed;
   z-index: 10;
@@ -1631,7 +1638,7 @@ html:has(.online-shell) {
     border-radius: 0;
     /* Keep enough scrollable space after the last option for the sticky
        price/add button footer to be fully visible above the mobile edge. */
-    padding: 22px 18px calc(112px + env(safe-area-inset-bottom));
+    padding: 22px 18px calc(96px + env(safe-area-inset-bottom));
   }
   .online-shell .customise-sheet .sheet-footer {
     bottom: -22px;
@@ -1642,7 +1649,7 @@ html:has(.online-shell) {
   /* QR sheets have the same mobile footer: reserve scroll room so its price
      and add button can be brought entirely above the viewport edge. */
   .order-shell .customise-sheet {
-    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
   }
 }
 @media (max-width: 360px) {

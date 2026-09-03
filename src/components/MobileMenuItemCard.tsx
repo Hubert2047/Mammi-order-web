@@ -7,6 +7,7 @@ type MobileMenuItemCardProps = {
     originalPrice?: string
     addLabel: string
     disabled?: boolean
+    unavailable?: boolean
     showAction?: boolean
     onAdd: () => void
 }
@@ -20,6 +21,7 @@ export default function MobileMenuItemCard({
     originalPrice,
     addLabel,
     disabled = false,
+    unavailable = false,
     showAction = true,
     onAdd,
 }: MobileMenuItemCardProps) {
@@ -29,7 +31,7 @@ export default function MobileMenuItemCard({
                 {imageUrl ? <img className='h-full w-full object-cover' src={imageUrl} alt='' /> : '🍽️'}
             </div>
             <div className='flex min-w-0 flex-1 flex-col p-3.5'>
-                {badge && <span className='self-start rounded-full bg-[#f4dfaf] px-2 py-1 text-[0.68rem] font-extrabold leading-none text-[#70521b]'>{badge}</span>}
+                {badge && <span className={`self-start rounded-full bg-[#f4dfaf] px-2 py-1 text-[0.68rem] font-extrabold leading-none ${unavailable ? 'text-[#dc2626]' : 'text-[#70521b]'}`}>{badge}</span>}
                 <p className='mt-1.5 text-[1.08rem] font-bold leading-[1.25] tracking-[-0.012em] text-[#253228] [overflow-wrap:anywhere]'>{name}</p>
                 <p className='mt-[5px] overflow-hidden text-[0.83rem] text-[#718072] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]'>{description}</p>
                 <div className='mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2.5'>
@@ -38,7 +40,7 @@ export default function MobileMenuItemCard({
                         {price}
                     </strong>
                     {showAction && <button disabled={disabled} className='flex-none rounded-xl bg-[#2e4b2d] px-[13px] py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50' onClick={onAdd}>
-                        {addLabel}
+                        <span className={unavailable ? 'text-[#dc2626]' : undefined}>{addLabel}</span>
                     </button>}
                 </div>
             </div>

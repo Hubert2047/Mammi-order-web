@@ -536,6 +536,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 originalPrice={displayPrice < item.price ? formatPrice(item.price, locale) : undefined}
                                 addLabel={copy.add}
                                 badge={item.unavailable ? copy.unavailable : undefined}
+                                unavailable={item.unavailable}
                                 disabled={item.unavailable}
                                 onAdd={() => openItem(item)}
                             />
@@ -555,7 +556,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                         )}
                                         {formatPrice(displayPrice, locale)}
                                     </strong>
-                                    <button disabled={item.unavailable} onClick={() => openItem(item)}>{item.unavailable ? copy.unavailable : copy.add}</button>
+                                    <button disabled={item.unavailable} onClick={() => openItem(item)}><span className={item.unavailable ? 'unavailable-label' : undefined}>{item.unavailable ? copy.unavailable : copy.add}</span></button>
                                 </div>
                             </div>
                         </article>
@@ -811,7 +812,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                                 disabled={addon.unavailable}
                                                 className={addonIds.includes(addon.id) ? 'selected' : ''}
                                                 onClick={() => toggle(addon.id, addonIds, setAddonIds)}>
-                                                <span>{label(addon.names)}{addon.unavailable ? ` (${copy.unavailable})` : ''}</span>
+                                                <span>{label(addon.names)}{addon.unavailable ? <span className='unavailable-label'> ({copy.unavailable})</span> : ''}</span>
                                                 <strong>
                                                     {displayPrice < addon.priceExtra && (
                                                         <small className='mr-1 line-through'>

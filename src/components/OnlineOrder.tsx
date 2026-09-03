@@ -791,6 +791,7 @@ export default function OnlineOrder() {
                       }
                       addLabel={item.unavailable ? copy.unavailable : onlineOrderingEnabled ? copy.add : copy.dineInOnlyNotice}
                       disabled={item.unavailable}
+                      unavailable={item.unavailable}
                       showAction={onlineOrderingEnabled}
                       onAdd={() => onlineOrderingEnabled && !item.unavailable && openItem(item)}
                     />
@@ -841,7 +842,7 @@ export default function OnlineOrder() {
                           </strong>
                           {onlineOrderingEnabled && (
                             <button disabled={item.unavailable} onClick={() => !item.unavailable && openItem(item)}>
-                              {item.unavailable ? copy.unavailable : copy.add}
+                              <span className={item.unavailable ? "unavailable-label" : undefined}>{item.unavailable ? copy.unavailable : copy.add}</span>
                             </button>
                           )}
                         </div>
@@ -1219,7 +1220,7 @@ export default function OnlineOrder() {
                             )
                           }
                         >
-                          <span>{label(addon.names)}{addon.unavailable ? ` (${copy.unavailable})` : ''}</span>
+                          <span>{label(addon.names)}{addon.unavailable ? <span className="unavailable-label"> ({copy.unavailable})</span> : ''}</span>
                           <strong>
                             {displayPrice < addon.priceExtra && (
                               <small className="mr-1 line-through">

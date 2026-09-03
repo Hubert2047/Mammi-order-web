@@ -252,7 +252,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
                             <div className='menu-card-footer'>
                                 <strong>{price(item.price)}</strong>
                                 <button disabled={item.unavailable} onClick={() => open(item)}>
-                                    {item.unavailable ? copy.unavailable : copy.add}
+                                    <span className={item.unavailable ? 'unavailable-label' : undefined}>{item.unavailable ? copy.unavailable : copy.add}</span>
                                 </button>
                             </div>
                         </div>
@@ -385,7 +385,7 @@ export default function OrderingExperience({ qrToken }: { qrToken: string }) {
                                             disabled={item.unavailable}
                                             className={addons.some((value) => value.id === item.id) ? 'selected' : ''}
                                             onClick={() => toggleAddon(item)}>
-                                            <span>{label(item.names)}</span>
+                                            <span>{label(item.names)}{item.unavailable ? <span className='unavailable-label'> ({copy.unavailable})</span> : ''}</span>
                                             <strong>+{price(item.priceExtra)}</strong>
                                         </button>
                                     ))}
