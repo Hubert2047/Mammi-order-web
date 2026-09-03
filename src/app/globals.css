@@ -321,13 +321,20 @@ body:has(.order-shell) {
 .primary-button:disabled {
   background: #d1d5db;
   box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.addon-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 .unavailable-label {
-  color: #dc2626;
+  color: #b91c1c;
   font-weight: 800;
+  opacity: 0.7;
 }
 .menu-card-footer button:disabled .unavailable-label {
-  color: #dc2626;
+  color: #b91c1c;
 }
 .cart-dock {
   position: fixed;

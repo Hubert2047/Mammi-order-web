@@ -40,7 +40,7 @@ export default function MobileMenuItemCard({
                         {price}
                     </strong>
                     {showAction && <button disabled={disabled} className='flex-none rounded-xl bg-[#2e4b2d] px-[13px] py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50' onClick={onAdd}>
-                        <span className={unavailable ? 'text-[#dc2626]' : undefined}>{addLabel}</span>
+                        <span className={unavailable ? 'unavailable-label' : undefined}>{addLabel}</span>
                     </button>}
                 </div>
             </div>
