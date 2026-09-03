@@ -102,9 +102,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [openingCart, setOpeningCart] = useState(false)
     const [quoteLoading, setQuoteLoading] = useState(false)
     const [pricingChanged, setPricingChanged] = useState(false)
+    const [cartAvailabilityError, setCartAvailabilityError] = useState(false)
     const [editingKey, setEditingKey] = useState<string | null>(null)
     const menuGridRef = useRef<HTMLElement>(null)
     const quoteCache = useRef<{ key: string; total: number; expiresAt: number; quoteToken: string } | null>(null)
+    const cartHydratedRef = useRef(false)
 
     useEffect(() => {
         setLocale(detectLocale())
@@ -175,7 +177,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 const saved = await fetch(`${base}/api/public/carts/${savedCartToken}`)
                 if (saved.ok && (await saved.clone().json()).data.status === 'draft') {
                     const savedData = (await saved.json()).data
-                    setCart(savedData.lines.map((line: Omit<CartLine, 'key'>) => ({ ...line, key: createLineKey() })))
+                    if (!cartHydratedRef.current) {
+                        setCart(savedData.lines.map((line: Omit<CartLine, 'key'>) => ({ ...line, key: createLineKey() })))
+                    }
                 } else {
                     window.localStorage.removeItem(storageKey)
                     savedCartToken = null
@@ -190,6 +194,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 window.localStorage.setItem(storageKey, savedCartToken)
             }
             setCartToken(savedCartToken)
+            cartHydratedRef.current = true
             setSessionUnavailable(false)
             setFailed(false)
         } catch {
@@ -287,6 +292,15 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         : catalogTotal
     const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined
     const count = cart.reduce((sum, line) => sum + line.quantity, 0)
+    const unavailableCartItems = cart.flatMap((line) => {
+        const item = items.find((candidate) => candidate.id === line.itemId)
+        if (!item) return []
+        if (item.unavailable) return [{ kind: 'item' as const, name: label(item.names), addonName: '' }]
+        return item.addons.filter((addon) => line.addonIds.includes(addon.id) && addon.unavailable).map((addon) => ({ kind: 'addon' as const, name: label(item.names), addonName: label(addon.names) }))
+    })
+    useEffect(() => {
+        if (!unavailableCartItems.length) setCartAvailabilityError(false)
+    }, [unavailableCartItems.length])
     const categories = useMemo(
         () => [...smartCategories.filter((entry) => items.some((item) => item[entry.key] === true)).map((entry) => ({ id: entry.id, names: entry.names })), ...[...new Map(items.map((item) => [item.category.id, item.category])).values()].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))],
         [items, locale],
@@ -351,7 +365,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ lines }),
             })
-            const payload = response.ok ? await response.json() : null
+            const payload = await response.json().catch(() => null)
+            if (!response.ok) {
+                if (payload?.code === 'ITEM_TEMPORARILY_UNAVAILABLE' || payload?.code === 'ADDON_TEMPORARILY_UNAVAILABLE') {
+                    setCartAvailabilityError(true)
+                    setCartOpen(true)
+                }
+                return
+            }
             const quoteTotal = payload?.data?.total
             const expiresAt = Date.parse(payload?.data?.expiresAt || '')
             const quoteToken = payload?.data?.quoteToken
@@ -746,9 +767,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             </div>
                         )}
                         {pricingChanged && <p className='order-pricing-notice' role='alert'>{copy.orderPricingChanged}</p>}
+                        {(cartAvailabilityError || unavailableCartItems.length > 0) && <div className='order-pricing-notice' role='alert'><p>{copy.cartUnavailable}</p><ul>{unavailableCartItems.map((entry, index) => <li key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}><span>{entry.kind === 'item' ? copy.unavailableItem : copy.unavailableAddon}: </span><strong className='cart-unavailable-name'>{entry.name}{entry.addonName ? ` - ${entry.addonName}` : ''}</strong></li>)}</ul></div>}
                         <button
                             className='primary-button send-button'
-                            disabled={!cart.length || sending}
+                            disabled={!cart.length || sending || cartAvailabilityError || unavailableCartItems.length > 0}
                             onClick={() => void confirm()}>
                             {copy.sendOrder}
                         </button>

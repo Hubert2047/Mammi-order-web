@@ -333,6 +333,10 @@ body:has(.order-shell) {
   font-weight: 800;
   opacity: 0.7;
 }
+.cart-unavailable-name {
+  color: #b91c1c;
+  font-weight: 800;
+}
 .menu-card-footer button:disabled .unavailable-label {
   color: #b91c1c;
 }

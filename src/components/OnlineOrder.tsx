@@ -168,6 +168,7 @@ export default function OnlineOrder() {
   const [cartOpen, setCartOpen] = useState(false);
   const [openingCart, setOpeningCart] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [cartAvailabilityError, setCartAvailabilityError] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState(false);
@@ -343,6 +344,15 @@ export default function OnlineOrder() {
       : catalogTotal;
   const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const unavailableCartItems = cart.flatMap((line) => {
+    const item = items.find((candidate) => candidate.id === line.itemId);
+    if (!item) return [];
+    if (item.unavailable) return [{ kind: "item" as const, name: label(item.names), addonName: "" }];
+    return item.addons.filter((addon) => line.addonIds.includes(addon.id) && addon.unavailable).map((addon) => ({ kind: "addon" as const, name: label(item.names), addonName: label(addon.names) }));
+  });
+  useEffect(() => {
+    if (!unavailableCartItems.length) setCartAvailabilityError(false);
+  }, [unavailableCartItems.length]);
 
   const openCart = async (nextCart = cart, fullPageLoading = true) => {
     if (!nextCart.length) {
@@ -369,7 +379,14 @@ export default function OnlineOrder() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lines }),
       });
-      const payload = response.ok ? await response.json() : null;
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        if (payload?.code === "ITEM_TEMPORARILY_UNAVAILABLE" || payload?.code === "ADDON_TEMPORARILY_UNAVAILABLE") {
+          setCartAvailabilityError(true);
+          setCartOpen(true);
+        }
+        return;
+      }
       const quoteTotal = payload?.data?.total;
       const expiresAt = Date.parse(payload?.data?.expiresAt || "");
       const quoteToken = payload?.data?.quoteToken;
@@ -732,6 +749,12 @@ export default function OnlineOrder() {
                   <strong>{count}</strong>
                 </button>
               )}
+              {(cartAvailabilityError || unavailableCartItems.length > 0) && (
+                <div className="order-pricing-notice" role="alert">
+                  <p>{copy.cartUnavailable}</p>
+                  <ul>{unavailableCartItems.map((entry, index) => <li key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}><span>{entry.kind === "item" ? copy.unavailableItem : copy.unavailableAddon}: </span><strong className="cart-unavailable-name">{entry.name}{entry.addonName ? ` - ${entry.addonName}` : ""}</strong></li>)}</ul>
+                </div>
+              )}
               <label className="locale-picker">
                 <span className="sr-only">{copy.language}</span>
                 <select
@@ -1053,7 +1076,7 @@ export default function OnlineOrder() {
               )}
               <button
                 className="primary-button send-button"
-                disabled={!cart.length}
+                disabled={!cart.length || cartAvailabilityError || unavailableCartItems.length > 0}
                 onClick={() => {
                   setCartOpen(false);
                   setCheckoutOpen(true);
