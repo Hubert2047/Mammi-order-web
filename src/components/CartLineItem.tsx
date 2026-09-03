@@ -1,6 +1,7 @@
 type CartLineItemProps = {
     name: string
     price: string
+    originalPrice?: string
     details?: string
     quantity: number
     decreaseLabel: string
@@ -16,6 +17,7 @@ type CartLineItemProps = {
 export default function CartLineItem({
     name,
     price,
+    originalPrice,
     details,
     quantity,
     decreaseLabel,
@@ -31,7 +33,7 @@ export default function CartLineItem({
         <div className="flex sm:hidden items-center gap-3 border-b border-gray-100 py-[11px] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif]">
             <div className='min-w-0 flex-1'>
                 <strong className='block text-[1.125rem] leading-[1.25] text-[#29382c] [overflow-wrap:anywhere]'>{name}</strong>
-                <small className='mt-[3px] block text-[0.85rem] font-bold text-[#5f8c25]'>{price}</small>
+                <small className='mt-[3px] block text-[0.85rem] font-bold text-[#5f8c25]'>{originalPrice && <del className='mr-1 font-normal text-gray-400'>{originalPrice}</del>}{price}</small>
                 {details && <small className='mt-0.5 block truncate text-[0.78rem] text-gray-500'>{details}</small>}
             </div>
             <div className='ml-auto flex items-center gap-4'>

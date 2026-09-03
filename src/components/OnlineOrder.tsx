@@ -166,6 +166,7 @@ export default function OnlineOrder() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pricingChanged, setPricingChanged] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [openingCart, setOpeningCart] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileError, setTurnstileError] = useState(false);
@@ -312,12 +313,77 @@ export default function OnlineOrder() {
         ) || 0)
     );
   };
+  const lineOriginalPrice = (line: CartLine) => {
+    const item = items.find((candidate) => candidate.id === line.itemId);
+    return (
+      (item?.price ?? 0) +
+      (item?.addons
+        .filter((addon) => line.addonIds.includes(addon.id))
+        .reduce((sum, addon) => sum + addon.priceExtra, 0) || 0)
+    );
+  };
   const catalogTotal = useMemo(
     () => cart.reduce((sum, line) => sum + line.quantity * linePrice(line), 0),
     [cart, items],
   );
-  const total = promotionTotal ?? catalogTotal;
+  const originalCatalogTotal = useMemo(
+    () => cart.reduce((sum, line) => sum + line.quantity * lineOriginalPrice(line), 0),
+    [cart, items],
+  );
+  const currentQuoteKey = useMemo(
+    () => JSON.stringify(cart.map(({ key, ...line }) => line)),
+    [cart],
+  );
+  const total =
+    quoteCache.current?.key === currentQuoteKey &&
+    quoteCache.current.expiresAt > Date.now() &&
+    promotionTotal !== null
+      ? promotionTotal
+      : catalogTotal;
+  const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
+
+  const openCart = async () => {
+    if (!cart.length) {
+      setCartOpen(true);
+      return;
+    }
+    if (!cartToken) return;
+
+    const lines = cart.map(({ key, ...line }) => line);
+    const quoteKey = JSON.stringify(lines);
+    const cached = quoteCache.current;
+    if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
+      setPromotionTotal(cached.total);
+      setCartOpen(true);
+      return;
+    }
+
+    setOpeningCart(true);
+    try {
+      const response = await fetch(`${base}/api/public/carts/${cartToken}/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lines }),
+      });
+      const payload = response.ok ? await response.json() : null;
+      const quoteTotal = payload?.data?.total;
+      const expiresAt = Date.parse(payload?.data?.expiresAt || "");
+      const quoteToken = payload?.data?.quoteToken;
+      if (
+        typeof quoteTotal !== "number" ||
+        typeof quoteToken !== "string" ||
+        !Number.isFinite(expiresAt)
+      )
+        return;
+
+      quoteCache.current = { key: quoteKey, total: quoteTotal, expiresAt, quoteToken };
+      setPromotionTotal(quoteTotal);
+      setCartOpen(true);
+    } finally {
+      setOpeningCart(false);
+    }
+  };
 
   const load = async () => {
     try {
@@ -399,48 +465,6 @@ export default function OnlineOrder() {
     });
   }, [cart, cartToken, type, loading, completed, checkoutOpen]);
   useEffect(() => {
-    if (
-      !cartToken ||
-      loading ||
-      completed !== null ||
-      !checkoutOpen ||
-      !cart.length
-    )
-    return;
-    const lines = cart.map(({ key, ...line }) => line);
-    const quoteKey = JSON.stringify(lines);
-    const cached = quoteCache.current;
-    if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
-      setPromotionTotal(cached.total);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void fetch(`${base}/api/public/carts/${cartToken}/preview`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines }),
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((payload) => {
-          const total = payload?.data?.total;
-          const expiresAt = Date.parse(payload?.data?.expiresAt || "");
-          const quoteToken = payload?.data?.quoteToken;
-          if (
-            typeof total !== "number" ||
-            typeof quoteToken !== "string" ||
-            !Number.isFinite(expiresAt)
-          ) {
-            setPromotionTotal(null);
-            return;
-          }
-          quoteCache.current = { key: quoteKey, total, expiresAt, quoteToken };
-          setPromotionTotal(total);
-        })
-        .catch(() => setPromotionTotal(null));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [base, cart, cartToken, checkoutOpen, completed, loading]);
-  useEffect(() => {
     if (!checkoutOpen) return;
     if (window.turnstile) {
       setTurnstileReady(true);
@@ -514,7 +538,7 @@ export default function OnlineOrder() {
     const wasEditing = Boolean(editingLineKey);
     setSelected(null);
     setEditingLineKey(null);
-    if (wasEditing) setCartOpen(true);
+    if (wasEditing) void openCart();
   };
   const addToCart = () => {
     if (!selected) return;
@@ -538,7 +562,7 @@ export default function OnlineOrder() {
     );
     setSelected(null);
     setEditingLineKey(null);
-    if (wasEditing) setCartOpen(true);
+    if (wasEditing) void openCart();
   };
   const updateQuantity = (key: string, next: number) =>
     setCart((old) =>
@@ -668,6 +692,11 @@ export default function OnlineOrder() {
           className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? "opacity-0" : "opacity-100"}`}
         />
       )}
+      {openingCart && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-white/75 backdrop-blur-sm" role="status" aria-busy="true">
+          <span className="h-12 w-12 animate-spin rounded-full border-4 border-[#8ac545] border-t-transparent" />
+        </div>
+      )}
       <main
         className={`online-shell min-[650px]:!w-full min-[650px]:!max-w-[1160px] min-[650px]:!bg-transparent min-[650px]:!px-7 min-[650px]:!pb-[72px] transition-[opacity,transform] duration-300 ease-out ${menuReady ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
       >
@@ -689,7 +718,7 @@ export default function OnlineOrder() {
               {onlineOrderingEnabled && (
                 <button
                   className="header-cart online-header-cart min-[650px]:!hidden"
-                  onClick={() => setCartOpen(true)}
+                  onClick={() => void openCart()}
                   aria-label={copy.cart}
                 >
                   <span aria-hidden="true">🛒</span>
@@ -856,7 +885,7 @@ export default function OnlineOrder() {
           {onlineOrderingEnabled && (
             <button
               className="cart-fab min-[650px]:!inline-flex min-[650px]:!right-4 min-[650px]:!bottom-[120px] min-[650px]:!h-14 min-[650px]:!w-14 min-[650px]:!flex-col min-[650px]:!gap-0 min-[650px]:!rounded-full min-[650px]:!border-[3px] min-[650px]:!border-[#a9c294] min-[650px]:!bg-[#dcefd0] min-[650px]:!p-3.5 min-[650px]:!text-[#315b34] min-[650px]:!shadow-[0_10px_24px_rgba(61,75,55,0.2)]"
-              onClick={() => setCartOpen(true)}
+              onClick={() => void openCart()}
               aria-label={copy.cart}
             >
               <span aria-hidden="true">🛒</span>
@@ -881,6 +910,7 @@ export default function OnlineOrder() {
                 count={count}
                 itemLabel={copy.item}
                 total={formatPrice(total, locale)}
+                originalTotal={originalTotal}
                 closeLabel={copy.cancel}
                 onClose={() => setCartOpen(false)}
                 className="sm:!hidden"
@@ -892,7 +922,10 @@ export default function OnlineOrder() {
                     {count} {copy.item}
                   </span>
                 </div>
-                <strong>{formatPrice(total, locale)}</strong>
+                <strong>
+                  {originalTotal && <del className="mr-2 text-sm font-normal text-gray-400">{originalTotal}</del>}
+                  {formatPrice(total, locale)}
+                </strong>
               </div>
               {cart.length === 0 ? (
                 <p className="cart-empty">{copy.cartEmptyDescription}</p>
@@ -910,6 +943,11 @@ export default function OnlineOrder() {
                             linePrice(line) * line.quantity,
                             locale,
                           )}
+                          originalPrice={
+                            lineOriginalPrice(line) > linePrice(line)
+                              ? formatPrice(lineOriginalPrice(line) * line.quantity, locale)
+                              : undefined
+                          }
                           quantity={line.quantity}
                           decreaseLabel={copy.decreaseQuantity}
                           increaseLabel={copy.increaseQuantity}
@@ -932,6 +970,11 @@ export default function OnlineOrder() {
                           <div>
                             <strong>{item ? label(item.names) : ""}</strong>
                             <small className="line-price">
+                              {lineOriginalPrice(line) > linePrice(line) && (
+                                <del className="mr-1 font-normal text-gray-400">
+                                  {formatPrice(lineOriginalPrice(line) * line.quantity, locale)}
+                                </del>
+                              )}
                               {formatPrice(
                                 linePrice(line) * line.quantity,
                                 locale,

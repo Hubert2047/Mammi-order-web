@@ -99,6 +99,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [sending, setSending] = useState(false)
     const [completed, setCompleted] = useState<CompletedOrder | null>(null)
     const [cartOpen, setCartOpen] = useState(false)
+    const [openingCart, setOpeningCart] = useState(false)
     const [pricingChanged, setPricingChanged] = useState(false)
     const [editingKey, setEditingKey] = useState<string | null>(null)
     const menuGridRef = useRef<HTMLElement>(null)
@@ -252,38 +253,6 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         })
     }, [cart, cartToken, cartOpen, completed, loading])
 
-    useEffect(() => {
-        if (!cartToken || loading || completed || !cartOpen || !cart.length) return
-        const lines = cart.map(({ key, ...line }) => line)
-        const quoteKey = JSON.stringify(lines)
-        const cached = quoteCache.current
-        if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
-            setPromotionTotal(cached.total)
-            return
-        }
-        const timer = window.setTimeout(() => {
-            void fetch(`${base}/api/public/carts/${cartToken}/preview`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lines }),
-            })
-                .then((response) => (response.ok ? response.json() : null))
-                .then((payload) => {
-                    const total = payload?.data?.total
-                    const expiresAt = Date.parse(payload?.data?.expiresAt || '')
-                    const quoteToken = payload?.data?.quoteToken
-                    if (typeof total !== 'number' || typeof quoteToken !== 'string' || !Number.isFinite(expiresAt)) {
-                        setPromotionTotal(null)
-                        return
-                    }
-                    quoteCache.current = { key: quoteKey, total, expiresAt, quoteToken }
-                    setPromotionTotal(total)
-                })
-                .catch(() => setPromotionTotal(null))
-        }, 300)
-        return () => window.clearTimeout(timer)
-    }, [base, cart, cartOpen, cartToken, completed, loading])
-
     const linePrice = (line: CartLine) => {
         const item = items.find((candidate) => candidate.id === line.itemId)
         return (
@@ -293,11 +262,29 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 .reduce((sum, addon) => sum + (addon.displayPrice ?? addon.priceExtra), 0) || 0)
         )
     }
+    const lineOriginalPrice = (line: CartLine) => {
+        const item = items.find((candidate) => candidate.id === line.itemId)
+        return (item?.price ?? 0) + (item?.addons.filter((addon) => line.addonIds.includes(addon.id)).reduce((sum, addon) => sum + addon.priceExtra, 0) || 0)
+    }
     const catalogTotal = useMemo(
         () => cart.reduce((sum, line) => sum + line.quantity * linePrice(line), 0),
         [cart, items],
     )
-    const total = promotionTotal ?? catalogTotal
+    const originalCatalogTotal = useMemo(
+        () => cart.reduce((sum, line) => sum + line.quantity * lineOriginalPrice(line), 0),
+        [cart, items],
+    )
+    const currentQuoteKey = useMemo(
+        () => JSON.stringify(cart.map(({ key, ...line }) => line)),
+        [cart],
+    )
+    const hasCurrentQuote = quoteCache.current?.key === currentQuoteKey
+        && quoteCache.current.expiresAt > Date.now()
+        && promotionTotal !== null
+    const total = hasCurrentQuote
+        ? promotionTotal
+        : catalogTotal
+    const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined
     const count = cart.reduce((sum, line) => sum + line.quantity, 0)
     const categories = useMemo(
         () => [...smartCategories.filter((entry) => items.some((item) => item[entry.key] === true)).map((entry) => ({ id: entry.id, names: entry.names })), ...[...new Map(items.map((item) => [item.category.id, item.category])).values()].sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.id.localeCompare(right.id))],
@@ -336,6 +323,43 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     })),
                 ),
         )
+    }
+
+    const openCart = async () => {
+        if (!cart.length) {
+            setCartOpen(true)
+            return
+        }
+        if (!cartToken) return
+
+        const lines = cart.map(({ key, ...line }) => line)
+        const quoteKey = JSON.stringify(lines)
+        const cached = quoteCache.current
+        if (cached && cached.key === quoteKey && cached.expiresAt > Date.now()) {
+            setPromotionTotal(cached.total)
+            setCartOpen(true)
+            return
+        }
+
+        setOpeningCart(true)
+        try {
+            const response = await fetch(`${base}/api/public/carts/${cartToken}/preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lines }),
+            })
+            const payload = response.ok ? await response.json() : null
+            const quoteTotal = payload?.data?.total
+            const expiresAt = Date.parse(payload?.data?.expiresAt || '')
+            const quoteToken = payload?.data?.quoteToken
+            if (typeof quoteTotal !== 'number' || typeof quoteToken !== 'string' || !Number.isFinite(expiresAt)) return
+
+            quoteCache.current = { key: quoteKey, total: quoteTotal, expiresAt, quoteToken }
+            setPromotionTotal(quoteTotal)
+            setCartOpen(true)
+        } finally {
+            setOpeningCart(false)
+        }
     }
     const toggle = (id: string, current: string[], setCurrent: (next: string[]) => void) =>
         setCurrent(current.includes(id) ? current.filter((value) => value !== id) : [...current, id])
@@ -471,6 +495,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? 'opacity-0' : 'opacity-100'}`}
                 />
             )}
+            {openingCart && (
+                <div className='fixed inset-0 z-[60] grid place-items-center bg-white/75 backdrop-blur-sm' role='status' aria-busy='true'>
+                    <span className='h-12 w-12 animate-spin rounded-full border-4 border-[#8ac545] border-t-transparent' />
+                </div>
+            )}
         <main className={`order-shell transition-[opacity,transform] duration-300 ease-out ${menuReady ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}>
             <div className='menu-sticky'>
                 <header className='menu-header'>
@@ -478,7 +507,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         <span className='table-badge'>
                             {copy.table} {table}
                         </span>
-                        <button className='header-cart' onClick={() => setCartOpen(true)} aria-label={copy.cart}>
+                        <button className='header-cart' onClick={() => void openCart()} aria-label={copy.cart}>
                             <span aria-hidden='true'>🛒</span>
                             <strong>{count}</strong>
                         </button>
@@ -573,7 +602,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 copyright={storeFooter.copyright}
             />
             <aside className='cart-dock'>
-                <button className='cart-summary' onClick={() => setCartOpen(true)}>
+                <button className='cart-summary' onClick={() => void openCart()}>
                     <div className='cart-heading'>
                         <div>
                             <p className='eyebrow'>{copy.cart}</p>
@@ -581,7 +610,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 {count} {copy.item}
                             </span>
                         </div>
-                        <strong>{formatPrice(total, locale)}</strong>
+                        <strong>
+                            {originalTotal && <del className='mr-2 text-sm font-normal text-gray-400'>{originalTotal}</del>}
+                            {formatPrice(total, locale)}
+                        </strong>
                     </div>
                 </button>
                 {cartOpen && (
@@ -591,6 +623,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             count={count}
                             itemLabel={copy.item}
                             total={formatPrice(total, locale)}
+                            originalTotal={originalTotal}
                             closeLabel={copy.cancel}
                             onClose={() => setCartOpen(false)}
                             className='-mx-[max(18px,calc((100vw-680px)/2))] -mt-6 sm:!hidden'
@@ -598,7 +631,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         <div className='cart-panel-header !hidden sm:!flex'>
                             <div>
                                 <strong>{copy.cart} · {count} {copy.item}</strong>
-                                <small className='cart-total'>{formatPrice(total, locale)}</small>
+                                <small className='cart-total'>
+                                    {originalTotal && <del className='mr-2 text-sm font-normal text-gray-400'>{originalTotal}</del>}
+                                    {formatPrice(total, locale)}
+                                </small>
                             </div>
                             <button className='icon-button' onClick={() => setCartOpen(false)} aria-label={copy.cancel}>×</button>
                         </div>
@@ -628,6 +664,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                             <CartLineItem
                                                 name={item ? label(item.names) : ''}
                                                 price={formatPrice(linePrice(line) * line.quantity, locale)}
+                                                originalPrice={lineOriginalPrice(line) > linePrice(line) ? formatPrice(lineOriginalPrice(line) * line.quantity, locale) : undefined}
                                                 details={details}
                                                 quantity={line.quantity}
                                                 decreaseLabel={copy.decreaseQuantity}
@@ -643,6 +680,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                             <div>
                                                 <strong>{item ? label(item.names) : ''}</strong>
                                                 <small className='line-price'>
+                                                    {lineOriginalPrice(line) > linePrice(line) && <del className='mr-1 font-normal text-gray-400'>{formatPrice(lineOriginalPrice(line) * line.quantity, locale)}</del>}
                                                     {formatPrice(linePrice(line) * line.quantity, locale)}
                                                 </small>
                                                 <small>
