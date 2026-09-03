@@ -20,6 +20,7 @@ import { storeFooter } from "@/lib/storeFooter";
 
 type Text = Record<Locale, string>;
 type Choice = { id: string; names: Text };
+type OptionGroup = { id: string; names: Text; selection: "single" | "multiple"; required: boolean; defaultOptionId?: string; options: Choice[] };
 type Addon = Choice & { priceExtra: number; displayPrice?: number };
 type Component = {
   componentId: string;
@@ -48,6 +49,7 @@ type MenuItem = {
   price: number;
   displayPrice?: number;
   variants: Choice[];
+  optionGroups: OptionGroup[];
   noteOptions: Choice[];
   addons: Addon[];
   components?: Component[];
@@ -57,6 +59,7 @@ type CartLine = {
   itemId: string;
   quantity: number;
   variant?: string;
+  optionSelections?: { groupId: string; optionId: string }[];
   noteOptions: string[];
   addonIds: string[];
   note?: string;
@@ -137,6 +140,7 @@ export default function OnlineOrder() {
   const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [variant, setVariant] = useState("");
+  const [optionSelections, setOptionSelections] = useState<{ groupId: string; optionId: string }[]>([]);
   const [noteOptions, setNoteOptions] = useState<string[]>([]);
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
@@ -159,6 +163,7 @@ export default function OnlineOrder() {
   const [orderRateLimited, setOrderRateLimited] = useState(false);
   const [sending, setSending] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [pricingChanged, setPricingChanged] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -170,6 +175,7 @@ export default function OnlineOrder() {
     key: string;
     total: number;
     expiresAt: number;
+    quoteToken: string;
   } | null>(null);
   const [completed, setCompleted] = useState<number | null>(null);
   const copy = t(locale);
@@ -364,6 +370,8 @@ export default function OnlineOrder() {
       auth: { publicToken: realtimeToken, clientType: "customer" },
     });
     const refresh = () => {
+      quoteCache.current = null;
+      setPromotionTotal(null);
       void load();
     };
     for (const event of [
@@ -397,7 +405,7 @@ export default function OnlineOrder() {
       !checkoutOpen ||
       !cart.length
     )
-      return;
+    return;
     const lines = cart.map(({ key, ...line }) => line);
     const quoteKey = JSON.stringify(lines);
     const cached = quoteCache.current;
@@ -415,11 +423,16 @@ export default function OnlineOrder() {
         .then((payload) => {
           const total = payload?.data?.total;
           const expiresAt = Date.parse(payload?.data?.expiresAt || "");
-          if (typeof total !== "number" || !Number.isFinite(expiresAt)) {
+          const quoteToken = payload?.data?.quoteToken;
+          if (
+            typeof total !== "number" ||
+            typeof quoteToken !== "string" ||
+            !Number.isFinite(expiresAt)
+          ) {
             setPromotionTotal(null);
             return;
           }
-          quoteCache.current = { key: quoteKey, total, expiresAt };
+          quoteCache.current = { key: quoteKey, total, expiresAt, quoteToken };
           setPromotionTotal(total);
         })
         .catch(() => setPromotionTotal(null));
@@ -477,6 +490,10 @@ export default function OnlineOrder() {
     setEditingLineKey(line?.key || null);
     setQuantity(line?.quantity || 1);
     setVariant(line?.variant || item.variants[0]?.id || "");
+    setOptionSelections(line?.optionSelections || (item.optionGroups || []).flatMap((group) => {
+      const optionId = group.defaultOptionId || (group.required ? group.options[0]?.id : undefined);
+      return optionId ? [{ groupId: group.id, optionId }] : [];
+    }));
     setNoteOptions(line?.noteOptions || []);
     setAddonIds(line?.addonIds || []);
     setNote(line?.note || "");
@@ -506,6 +523,7 @@ export default function OnlineOrder() {
       itemId: selected.id,
       quantity,
       variant: variant || undefined,
+      optionSelections: selected.type === "combo" ? [] : optionSelections,
       noteOptions: selected.type === "combo" ? [] : noteOptions,
       addonIds: selected.type === "combo" ? [] : addonIds,
       note: note.trim() || undefined,
@@ -555,6 +573,11 @@ export default function OnlineOrder() {
           body: JSON.stringify({
             customer,
             turnstileToken,
+            quoteToken:
+              quoteCache.current?.key === JSON.stringify(lines) &&
+              quoteCache.current.expiresAt > Date.now()
+                ? quoteCache.current.quoteToken
+                : "",
             pickupAt: new Date(`${pickupAt}:00+08:00`).toISOString(),
           }),
         },
@@ -564,6 +587,27 @@ export default function OnlineOrder() {
         if (payload?.code === "ONLINE_ORDER_RATE_LIMITED") {
           setOrderRateLimited(true);
           setFailed(true);
+          return;
+        }
+        if (payload?.code === "ORDER_PRICING_CHANGED") {
+          const pricing = payload?.data?.pricing;
+          const quoteToken = payload?.data?.quoteToken;
+          const expiresAt = Date.parse(payload?.data?.expiresAt || "");
+          if (
+            typeof pricing?.total === "number" &&
+            typeof quoteToken === "string" &&
+            Number.isFinite(expiresAt)
+          ) {
+            quoteCache.current = {
+              key: JSON.stringify(lines),
+              total: pricing.total,
+              expiresAt,
+              quoteToken,
+            };
+            setPromotionTotal(pricing.total);
+          }
+          setPricingChanged(true);
+          void load();
           return;
         }
         throw new Error();
@@ -1019,6 +1063,49 @@ export default function OnlineOrder() {
                   </div>
                 </fieldset>
               )}
+              {(selected.optionGroups || []).map((group) => {
+                const selectedIds = optionSelections
+                  .filter((selection) => selection.groupId === group.id)
+                  .map((selection) => selection.optionId);
+                const choose = (optionId: string) =>
+                  setOptionSelections((current) => {
+                    const others = current.filter(
+                      (selection) => selection.groupId !== group.id,
+                    );
+                    const next =
+                      group.selection === "single"
+                        ? selectedIds[0] === optionId
+                          ? group.required
+                            ? [optionId]
+                            : []
+                          : [optionId]
+                        : selectedIds.includes(optionId)
+                          ? selectedIds.filter((id) => id !== optionId)
+                          : [...selectedIds, optionId];
+                    return [
+                      ...others,
+                      ...next.map((id) => ({ groupId: group.id, optionId: id })),
+                    ];
+                  });
+                return (
+                  <fieldset key={group.id}>
+                    <legend>
+                      {label(group.names)}{group.required ? " *" : ""}
+                    </legend>
+                    <div className="choice-grid">
+                      {group.options.map((option) => (
+                        <button
+                          key={option.id}
+                          className={selectedIds.includes(option.id) ? "selected" : ""}
+                          onClick={() => choose(option.id)}
+                        >
+                          {label(option.names)}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                );
+              })}
               {selected.type === "combo" &&
                 (selected.components?.length || 0) > 0 && (
                   <fieldset className="combo-components-fieldset">
@@ -1195,6 +1282,11 @@ export default function OnlineOrder() {
                   <span className="checkout-close-symbol">×</span>
                 </button>
               </div>
+              {pricingChanged && (
+                <p className="order-pricing-notice" role="alert">
+                  {copy.orderPricingChanged}
+                </p>
+              )}
               <div className="online-type checkout-order-type">
                 <span>{copy.orderType}</span>
                 <button

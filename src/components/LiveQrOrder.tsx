@@ -13,6 +13,7 @@ import { storeFooter } from '@/lib/storeFooter'
 
 type Text = Record<Locale, string>
 type Choice = { id: string; names: Text }
+type OptionGroup = { id: string; names: Text; selection: 'single' | 'multiple'; required: boolean; defaultOptionId?: string; options: Choice[] }
 type Addon = Choice & { priceExtra: number; displayPrice?: number }
 type Component = { componentId: string; itemId: string; quantity: number; names: Text; noteOptions: Choice[] }
 type ComponentSelection = { componentId: string; itemId: string; noteOptions: string[]; note?: string }
@@ -30,6 +31,7 @@ type MenuItem = {
     price: number
     displayPrice?: number
     variants: Choice[]
+    optionGroups: OptionGroup[]
     noteOptions: Choice[]
     addons: Addon[]
     components?: Component[]
@@ -39,6 +41,7 @@ type CartLine = {
     itemId: string
     quantity: number
     variant?: string
+    optionSelections?: { groupId: string; optionId: string }[]
     noteOptions: string[]
     addonIds: string[]
     note?: string
@@ -81,6 +84,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [selected, setSelected] = useState<MenuItem | null>(null)
     const [quantity, setQuantity] = useState(1)
     const [variant, setVariant] = useState('')
+    const [optionSelections, setOptionSelections] = useState<{ groupId: string; optionId: string }[]>([])
     const [noteOptions, setNoteOptions] = useState<string[]>([])
     const [addonIds, setAddonIds] = useState<string[]>([])
     const [note, setNote] = useState('')
@@ -94,9 +98,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const [sending, setSending] = useState(false)
     const [completed, setCompleted] = useState<CompletedOrder | null>(null)
     const [cartOpen, setCartOpen] = useState(false)
+    const [pricingChanged, setPricingChanged] = useState(false)
     const [editingKey, setEditingKey] = useState<string | null>(null)
     const menuGridRef = useRef<HTMLElement>(null)
-    const quoteCache = useRef<{ key: string; total: number; expiresAt: number } | null>(null)
+    const quoteCache = useRef<{ key: string; total: number; expiresAt: number; quoteToken: string } | null>(null)
 
     useEffect(() => {
         setLocale(detectLocale())
@@ -202,6 +207,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             auth: { publicToken: realtimeToken, clientType: 'customer' },
         })
         const refresh = () => {
+            quoteCache.current = null
+            setPromotionTotal(null)
             void load()
         }
         for (const event of [
@@ -248,11 +255,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 .then((payload) => {
                     const total = payload?.data?.total
                     const expiresAt = Date.parse(payload?.data?.expiresAt || '')
-                    if (typeof total !== 'number' || !Number.isFinite(expiresAt)) {
+                    const quoteToken = payload?.data?.quoteToken
+                    if (typeof total !== 'number' || typeof quoteToken !== 'string' || !Number.isFinite(expiresAt)) {
                         setPromotionTotal(null)
                         return
                     }
-                    quoteCache.current = { key: quoteKey, total, expiresAt }
+                    quoteCache.current = { key: quoteKey, total, expiresAt, quoteToken }
                     setPromotionTotal(total)
                 })
                 .catch(() => setPromotionTotal(null))
@@ -263,10 +271,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     const linePrice = (line: CartLine) => {
         const item = items.find((candidate) => candidate.id === line.itemId)
         return (
-            (item?.price || 0) +
+            (item?.displayPrice ?? item?.price ?? 0) +
             (item?.addons
                 .filter((addon) => line.addonIds.includes(addon.id))
-                .reduce((sum, addon) => sum + addon.priceExtra, 0) || 0)
+                .reduce((sum, addon) => sum + (addon.displayPrice ?? addon.priceExtra), 0) || 0)
         )
     }
     const catalogTotal = useMemo(
@@ -294,6 +302,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         setCartOpen(line ? false : cartOpen)
         setQuantity(line?.quantity || 1)
         setVariant(line?.variant || item.variants[0]?.id || '')
+        setOptionSelections(line?.optionSelections || (item.optionGroups || []).flatMap((group) => {
+            const optionId = group.defaultOptionId || (group.required ? group.options[0]?.id : undefined)
+            return optionId ? [{ groupId: group.id, optionId }] : []
+        }))
         setNoteOptions(line?.noteOptions || [])
         setAddonIds(line?.addonIds || [])
         setNote(line?.note || '')
@@ -318,6 +330,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             itemId: selected.id,
             quantity,
             variant: variant || undefined,
+            optionSelections: selected.type === 'combo' ? [] : optionSelections,
             noteOptions: selected.type === 'combo' ? [] : [...noteOptions],
             addonIds: selected.type === 'combo' ? [] : [...addonIds],
             note: note.trim() || undefined,
@@ -346,11 +359,29 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 body: JSON.stringify({ lines }),
             })
             if (!synced.ok) throw new Error('Unable to save cart')
-            const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, { method: 'POST' })
+            const quoteKey = JSON.stringify(lines)
+            const cached = quoteCache.current
+            const quoteToken = cached?.key === quoteKey && cached.expiresAt > Date.now() ? cached.quoteToken : ''
+            const response = await fetch(`${base}/api/public/carts/${cartToken}/confirm`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quoteToken }),
+            })
             if (!response.ok) {
                 const error = await response.json().catch(() => null)
                 if (error?.code === 'SESSION_NOT_ACTIVE' || error?.code === 'SESSION_EXPIRED') {
                     setSessionUnavailable(true)
+                    return
+                }
+                if (error?.code === 'ORDER_PRICING_CHANGED') {
+                    const pricing = error?.data?.pricing
+                    const quoteToken = error?.data?.quoteToken
+                    const expiresAt = Date.parse(error?.data?.expiresAt || '')
+                    if (typeof pricing?.total === 'number' && typeof quoteToken === 'string' && Number.isFinite(expiresAt)) {
+                        quoteCache.current = { key: quoteKey, total: pricing.total, expiresAt, quoteToken }
+                        setPromotionTotal(pricing.total)
+                    }
+                    setPricingChanged(true)
+                    setCartOpen(true)
+                    void load()
                     return
                 }
                 throw new Error('Unable to confirm')
@@ -643,6 +674,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 })}
                             </div>
                         )}
+                        {pricingChanged && <p className='order-pricing-notice' role='alert'>{copy.orderPricingChanged}</p>}
                         <button
                             className='primary-button send-button'
                             disabled={!cart.length || sending}
@@ -700,6 +732,22 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 </div>
                             </fieldset>
                         )}
+                        {(selected.optionGroups || []).map((group) => {
+                            const selectedIds = optionSelections.filter((selection) => selection.groupId === group.id).map((selection) => selection.optionId)
+                            const choose = (optionId: string) => setOptionSelections((current) => {
+                                const others = current.filter((selection) => selection.groupId !== group.id)
+                                const next = group.selection === 'single'
+                                    ? (selectedIds[0] === optionId ? (group.required ? [optionId] : []) : [optionId])
+                                    : (selectedIds.includes(optionId) ? selectedIds.filter((id) => id !== optionId) : [...selectedIds, optionId])
+                                return [...others, ...next.map((id) => ({ groupId: group.id, optionId: id }))]
+                            })
+                            return <fieldset key={group.id}>
+                                <legend>{label(group.names)}{group.required ? ' *' : ''}</legend>
+                                <div className='choice-grid'>
+                                    {group.options.map((option) => <button key={option.id} className={selectedIds.includes(option.id) ? 'selected' : ''} onClick={() => choose(option.id)}>{label(option.names)}</button>)}
+                                </div>
+                            </fieldset>
+                        })}
                         {selected.type === 'combo' && (selected.components?.length || 0) > 0 && (
                             <fieldset className='combo-components-fieldset'>
                                 <legend>{copy.comboComponents}</legend>
