@@ -17,7 +17,7 @@ export default function MobileCategoryTabs({
 }: MobileCategoryTabsProps) {
   return (
     <nav
-      className={`mb-3 flex sm:hidden w-full flex-wrap gap-x-5 gap-y-1 border-b border-[#edf0e9] bg-white px-0 pb-2 pt-[18px] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] ${className}`}
+      className={`mb-3 flex w-full flex-wrap gap-x-5 gap-y-1 border-b border-[#edf0e9] bg-white px-0 pb-2 pt-[18px] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:hidden ${className}`}
       aria-label={ariaLabel}
     >
       {tabs.map((tab) => {

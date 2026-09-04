@@ -126,6 +126,20 @@ const formatPrice = (amount: number, locale: Locale) =>
     currency: "TWD",
     maximumFractionDigits: 0,
   }).format(amount);
+const scrollTextareaIntoView = (element: HTMLTextAreaElement) => {
+  let settled = false;
+  let fallbackTimer: number | undefined;
+  const viewport = window.visualViewport;
+  const scroll = () => {
+    if (settled) return;
+    settled = true;
+    viewport?.removeEventListener("resize", scroll);
+    if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  viewport?.addEventListener("resize", scroll, { once: true });
+  fallbackTimer = window.setTimeout(scroll, 450);
+};
 const taipeiInputValue = (date: Date) =>
   new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16);
 
@@ -1450,8 +1464,10 @@ export default function OnlineOrder() {
               <label className="note-field">
                 <span>{copy.note}</span>
                 <textarea
+                  className="focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={note}
                   maxLength={40}
+                  onFocus={(event) => scrollTextareaIntoView(event.currentTarget)}
                   onChange={(event) => setNote(event.target.value)}
                 />
               </label>

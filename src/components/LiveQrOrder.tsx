@@ -1,6 +1,13 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { io } from "socket.io-client";
 import { type Locale, t } from "@/lib/i18n";
 import CartLineItem from "@/components/CartLineItem";
@@ -88,6 +95,20 @@ const formatPrice = (amount: number, locale: Locale) =>
     currency: "TWD",
     maximumFractionDigits: 0,
   }).format(amount);
+const scrollTextareaIntoView = (element: HTMLTextAreaElement) => {
+  let settled = false;
+  let fallbackTimer: number | undefined;
+  const viewport = window.visualViewport;
+  const scroll = () => {
+    if (settled) return;
+    settled = true;
+    viewport?.removeEventListener("resize", scroll);
+    if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  viewport?.addEventListener("resize", scroll, { once: true });
+  fallbackTimer = window.setTimeout(scroll, 450);
+};
 const localeStorageKey = "mammi-order-locale-v2";
 const detectLocale = (): Locale => {
   if (typeof navigator === "undefined") return "zh-TW";
@@ -169,12 +190,18 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
       window.clearTimeout(timeout);
     };
   }, [failed, loading, localeReady, sessionUnavailable]);
-  useEffect(() => {
-    document.body.style.overflow = cartOpen ? "hidden" : "";
+  useLayoutEffect(() => {
+    const modalOpen = Boolean(selected || cartOpen);
+    if (!modalOpen) return;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
     };
-  }, [cartOpen]);
+  }, [selected, cartOpen]);
   useEffect(() => {
     if (!sessionUnavailable) return;
     const previousHtmlOverflow = document.documentElement.style.overflow;
@@ -754,11 +781,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         </div>
       )}
       <main
-        className={`order-shell transition-[opacity,transform] duration-300 ease-out ${menuReady ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
+        className={`mx-auto flex h-[100svh] min-h-0 w-full max-w-[720px] flex-col overflow-hidden bg-white px-[18px] transition-opacity duration-300 ease-out sm:px-[30px] ${menuReady ? "opacity-100" : "pointer-events-none opacity-0"}`}
       >
-        <div className="menu-sticky">
-          <header className="menu-header">
-            <div className="header-meta">
+        <div className="sticky top-0 z-[5] -mx-[18px] w-[calc(100%+36px)] bg-white px-[18px] pt-2 sm:-mx-[30px] sm:w-[calc(100%+60px)] sm:px-[30px]">
+          <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-stretch gap-x-3 gap-y-2">
+            <div className="col-start-2 row-start-1 flex min-h-8 items-center justify-end gap-3">
               <span className="table-badge">
                 {copy.table} {table}
               </span>
@@ -786,11 +813,19 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </select>
               </label>
             </div>
-            <div className="brand-lockup">
-              <img src="/logo.png" alt="" width="44" height="44" />
-              <h1>{copy.brand}</h1>
+            <div className="col-start-1 row-start-1 flex w-auto items-center gap-2.5">
+              <img
+                className="h-[54px] w-[54px] rounded-xl object-contain"
+                src="/logo.png"
+                alt=""
+                width="44"
+                height="44"
+              />
+              <h1 className="hidden">{copy.brand}</h1>
             </div>
-            <p className="header-copy">{copy.qrMenuDescription}</p>
+            <p className="col-span-full row-start-2 mb-0 w-full text-sm leading-6 text-gray-500">
+              {copy.qrMenuDescription}
+            </p>
           </header>
           <MobileCategoryTabs
             tabs={[
@@ -805,11 +840,11 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             onSelect={setCategory}
           />
           <nav
-            className="category-tabs !hidden sm:!flex"
+            className="!hidden border-b border-[#edf0e9] bg-white px-0 pb-2 pt-[18px] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:!flex sm:flex-wrap sm:gap-x-5 sm:gap-y-1"
             aria-label={copy.categories}
           >
             <button
-              className={category === "all" ? "active" : ""}
+              className={`relative border-0 bg-transparent px-0 py-2 text-[0.95rem] font-bold ${category === "all" ? "text-[#315b34] after:absolute after:inset-x-0 after:bottom-[3px] after:h-0.5 after:bg-[#315b34] after:content-['']" : "text-[#6b7280]"}`}
               onClick={() => setCategory("all")}
             >
               {copy.all}
@@ -817,7 +852,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             {categories.map((entry) => (
               <button
                 key={entry.id}
-                className={category === entry.id ? "active" : ""}
+                className={`relative border-0 bg-transparent px-0 py-2 text-[0.95rem] font-bold ${category === entry.id ? "text-[#315b34] after:absolute after:inset-x-0 after:bottom-[3px] after:h-0.5 after:bg-[#315b34] after:content-['']" : "text-[#6b7280]"}`}
                 onClick={() => setCategory(entry.id)}
               >
                 {label(entry.names)}
@@ -825,7 +860,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             ))}
           </nav>
         </div>
-        <section ref={menuGridRef} className="menu-grid">
+        <section
+          ref={menuGridRef}
+          className="grid min-h-0 flex-1 align-content-start gap-3 overflow-y-auto overscroll-contain px-0.5 pb-[52px] sm:grid-cols-2"
+        >
           {visibleItems.map((item) => {
             const displayPrice = item.displayPrice ?? item.price;
             return (
@@ -846,17 +884,22 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                   disabled={item.unavailable}
                   onAdd={() => openItem(item)}
                 />
-                <article className="menu-card !hidden sm:!flex">
-                  <div className="dish-art" aria-hidden="true">
+                <article className="hidden min-h-[164px] flex-col overflow-hidden rounded-[20px] border border-gray-200 bg-white shadow-[0_5px_16px_rgba(0,0,0,0.06)] sm:flex">
+                  <div
+                    className="grid h-[104px] w-full place-items-center bg-gradient-to-br from-[#e8f5d6] to-[#cfe9a8] text-[3.7rem]"
+                    aria-hidden="true"
+                  >
                     {item.imageUrl ? <img src={item.imageUrl} alt="" /> : "🍽️"}
                   </div>
-                  <div className="menu-card-copy">
-                    <p className="menu-name">{label(item.names)}</p>
-                    <p className="menu-description">
+                  <div className="flex min-w-0 flex-1 flex-col p-[15px]">
+                    <p className="text-[1.05rem] font-extrabold text-black">
+                      {label(item.names)}
+                    </p>
+                    <p className="mt-[5px] line-clamp-2 overflow-hidden text-[0.83rem] text-gray-500">
                       {label(item.description)}
                     </p>
-                    <div className="menu-card-footer">
-                      <strong>
+                    <div className="mt-auto flex items-center justify-between gap-3 pt-2.5">
+                      <strong className="text-[#8ac545]">
                         {displayPrice < item.price && (
                           <small className="mr-1 line-through">
                             {formatPrice(item.price, locale)}
@@ -869,9 +912,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         onClick={() => openItem(item)}
                       >
                         <span
-                          className={
-                            item.unavailable ? "unavailable-label" : undefined
-                          }
+                        className={item.unavailable ? "font-extrabold text-[#b91c1c] opacity-70" : undefined}
                         >
                           {item.unavailable ? copy.unavailable : copy.add}
                         </span>
@@ -883,16 +924,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             );
           })}
         </section>
-        <MobileStoreFooter
-          name={storeFooter.name}
-          hoursLabel={copy.businessHours}
-          hours={storeFooter.hours}
-          phone={storeFooter.phone}
-          address={storeFooter.address}
-          copyright={storeFooter.copyright}
-        />
-        <aside className="cart-dock">
-          <button className="cart-summary" onClick={() => void openCart()}>
+        <aside
+          className={`cart-dock fixed bottom-4 left-[max(16px,calc((100vw-720px)/2+18px))] right-[max(16px,calc((100vw-720px)/2+18px))] z-10 bg-transparent ${cartOpen ? "!z-30" : ""}`}
+        >
+          <button
+            className="cart-summary relative z-[11] hidden w-full items-center justify-between rounded-[18px] border border-[#d8e9c3] bg-white/95 px-[15px] py-[11px] text-left text-black shadow-[0_-5px_22px_rgba(0,0,0,0.1)]"
+            onClick={() => void openCart()}
+          >
             <div className="cart-heading">
               <div>
                 <p className="eyebrow">{copy.cart}</p>
@@ -911,7 +949,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
             </div>
           </button>
           {cartOpen && (
-            <div className="cart-expanded">
+            <div className="cart-expanded fixed inset-0 z-[12] flex max-h-none flex-col overflow-auto border-0 bg-white px-6 py-6 shadow-none sm:px-[max(18px,calc((100vw-680px)/2))]">
               <CartPanelHeader
                 cartLabel={copy.cart}
                 count={count}
@@ -1124,9 +1162,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
           )}
         </aside>
         {selected && (
-          <div className="modal-backdrop" onMouseDown={() => setSelected(null)}>
+          <div
+            className="modal-backdrop !z-[9]"
+            onMouseDown={() => setSelected(null)}
+          >
             <section
-              className="customise-sheet"
+              className="customise-sheet max-[649px]:!pb-[calc(72px+env(safe-area-inset-bottom))]"
               role="dialog"
               aria-modal="true"
               aria-label={copy.customise}
@@ -1381,8 +1422,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
               <label className="note-field">
                 <span>{copy.note}</span>
                 <textarea
+                  className="focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={note}
                   maxLength={40}
+                  onFocus={(event) => scrollTextareaIntoView(event.currentTarget)}
                   onChange={(event) => setNote(event.target.value)}
                 />
               </label>
@@ -1405,6 +1448,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
           </div>
         )}
       </main>
+      <MobileStoreFooter
+        name={storeFooter.name}
+        hoursLabel={copy.businessHours}
+        hours={storeFooter.hours}
+        phone={storeFooter.phone}
+        address={storeFooter.address}
+        copyright={storeFooter.copyright}
+      />
     </>
   );
 }

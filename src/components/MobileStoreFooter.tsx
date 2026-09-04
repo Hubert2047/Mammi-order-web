@@ -16,7 +16,7 @@ export default function MobileStoreFooter({
   copyright,
 }: MobileStoreFooterProps) {
   return (
-    <footer className="mt-3 border-t border-dashed border-gray-400 bg-white px-2 py-1 text-[11px] leading-4 text-[#222] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] max-[649px]:fixed max-[649px]:right-0 max-[649px]:bottom-0 max-[649px]:left-0 max-[649px]:z-10 max-[649px]:!m-0 min-[650px]:fixed min-[650px]:bottom-0 min-[650px]:left-1/2 min-[650px]:z-10 min-[650px]:!m-0 min-[650px]:!-translate-x-1/2 min-[650px]:!whitespace-nowrap min-[650px]:!rounded-t-full min-[650px]:!border min-[650px]:!border-b-0 min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-white/95 min-[650px]:!px-6 min-[650px]:!py-2 min-[650px]:!text-xs min-[650px]:!shadow-[0_-8px_22px_rgba(61,75,55,0.14)]">
+    <footer className="fixed inset-x-0 bottom-0 z-10 m-0 border-t border-dashed border-gray-400 bg-white px-2 py-1 pb-[calc(0.25rem+env(safe-area-inset-bottom))] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] text-[11px] leading-4 text-[#222] min-[650px]:left-1/2 min-[650px]:right-auto min-[650px]:inset-x-auto min-[650px]:-translate-x-1/2 min-[650px]:whitespace-nowrap min-[650px]:rounded-t-full min-[650px]:border min-[650px]:border-b-0 min-[650px]:border-[#c5d8b7] min-[650px]:bg-white/95 min-[650px]:px-6 min-[650px]:py-2 min-[650px]:pb-2 min-[650px]:text-xs min-[650px]:shadow-[0_-8px_22px_rgba(61,75,55,0.14)]">
       <div className="flex flex-wrap items-center gap-x-2 min-[650px]:hidden">
         <span>
           {name} {hoursLabel} {hours}
