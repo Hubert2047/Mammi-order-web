@@ -20,8 +20,19 @@ import { storeFooter } from "@/lib/storeFooter";
 
 type Text = Record<Locale, string>;
 type Choice = { id: string; names: Text };
-type OptionGroup = { id: string; names: Text; selection: "single" | "multiple"; required: boolean; defaultOptionId?: string; options: Choice[] };
-type Addon = Choice & { priceExtra: number; displayPrice?: number; unavailable?: boolean };
+type OptionGroup = {
+  id: string;
+  names: Text;
+  selection: "single" | "multiple";
+  required: boolean;
+  defaultOptionId?: string;
+  options: Choice[];
+};
+type Addon = Choice & {
+  priceExtra: number;
+  displayPrice?: number;
+  unavailable?: boolean;
+};
 type Component = {
   componentId: string;
   itemId: string;
@@ -66,7 +77,11 @@ type CartLine = {
   note?: string;
   componentSelections?: ComponentSelection[];
 };
-type UnavailableCartItem = { kind: "item" | "addon"; name: string; addonName: string };
+type UnavailableCartItem = {
+  kind: "item" | "addon";
+  name: string;
+  addonName: string;
+};
 type OrderType = "dine_in" | "takeaway";
 
 declare global {
@@ -142,7 +157,9 @@ export default function OnlineOrder() {
   const [editingLineKey, setEditingLineKey] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [variant, setVariant] = useState("");
-  const [optionSelections, setOptionSelections] = useState<{ groupId: string; optionId: string }[]>([]);
+  const [optionSelections, setOptionSelections] = useState<
+    { groupId: string; optionId: string }[]
+  >([]);
   const [noteOptions, setNoteOptions] = useState<string[]>([]);
   const [addonIds, setAddonIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
@@ -330,7 +347,11 @@ export default function OnlineOrder() {
     [cart, items],
   );
   const originalCatalogTotal = useMemo(
-    () => cart.reduce((sum, line) => sum + line.quantity * lineOriginalPrice(line), 0),
+    () =>
+      cart.reduce(
+        (sum, line) => sum + line.quantity * lineOriginalPrice(line),
+        0,
+      ),
     [cart, items],
   );
   const currentQuoteKey = useMemo(
@@ -343,14 +364,30 @@ export default function OnlineOrder() {
     promotionTotal !== null
       ? promotionTotal
       : catalogTotal;
-  const originalTotal = originalCatalogTotal > total ? formatPrice(originalCatalogTotal, locale) : undefined;
+  const originalTotal =
+    originalCatalogTotal > total
+      ? formatPrice(originalCatalogTotal, locale)
+      : undefined;
   const count = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const unavailableCartItems: UnavailableCartItem[] = cart.flatMap((line): UnavailableCartItem[] => {
-    const item = items.find((candidate) => candidate.id === line.itemId);
-    if (!item) return [];
-    if (item.unavailable) return [{ kind: "item" as const, name: label(item.names), addonName: "" }];
-    return item.addons.filter((addon) => line.addonIds.includes(addon.id) && addon.unavailable).map((addon) => ({ kind: "addon" as const, name: label(item.names), addonName: label(addon.names) }));
-  });
+  const unavailableCartItems: UnavailableCartItem[] = cart.flatMap(
+    (line): UnavailableCartItem[] => {
+      const item = items.find((candidate) => candidate.id === line.itemId);
+      if (!item) return [];
+      if (item.unavailable)
+        return [
+          { kind: "item" as const, name: label(item.names), addonName: "" },
+        ];
+      return item.addons
+        .filter(
+          (addon) => line.addonIds.includes(addon.id) && addon.unavailable,
+        )
+        .map((addon) => ({
+          kind: "addon" as const,
+          name: label(item.names),
+          addonName: label(addon.names),
+        }));
+    },
+  );
   useEffect(() => {
     if (!unavailableCartItems.length) setCartAvailabilityError(false);
   }, [unavailableCartItems.length]);
@@ -375,14 +412,20 @@ export default function OnlineOrder() {
     if (fullPageLoading) setOpeningCart(true);
     else setQuoteLoading(true);
     try {
-      const response = await fetch(`${base}/api/public/carts/${cartToken}/preview`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lines }),
-      });
+      const response = await fetch(
+        `${base}/api/public/carts/${cartToken}/preview`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lines }),
+        },
+      );
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        if (payload?.code === "ITEM_TEMPORARILY_UNAVAILABLE" || payload?.code === "ADDON_TEMPORARILY_UNAVAILABLE") {
+        if (
+          payload?.code === "ITEM_TEMPORARILY_UNAVAILABLE" ||
+          payload?.code === "ADDON_TEMPORARILY_UNAVAILABLE"
+        ) {
           setCartAvailabilityError(true);
           setCartOpen(true);
         }
@@ -398,7 +441,12 @@ export default function OnlineOrder() {
       )
         return;
 
-      quoteCache.current = { key: quoteKey, total: quoteTotal, expiresAt, quoteToken };
+      quoteCache.current = {
+        key: quoteKey,
+        total: quoteTotal,
+        expiresAt,
+        quoteToken,
+      };
       setPromotionTotal(quoteTotal);
       setCartOpen(true);
     } finally {
@@ -537,10 +585,15 @@ export default function OnlineOrder() {
     setEditingLineKey(line?.key || null);
     setQuantity(line?.quantity || 1);
     setVariant(line?.variant || item.variants[0]?.id || "");
-    setOptionSelections(line?.optionSelections || (item.optionGroups || []).flatMap((group) => {
-      const optionId = group.defaultOptionId || (group.required ? group.options[0]?.id : undefined);
-      return optionId ? [{ groupId: group.id, optionId }] : [];
-    }));
+    setOptionSelections(
+      line?.optionSelections ||
+        (item.optionGroups || []).flatMap((group) => {
+          const optionId =
+            group.defaultOptionId ||
+            (group.required ? group.options[0]?.id : undefined);
+          return optionId ? [{ groupId: group.id, optionId }] : [];
+        }),
+    );
     setNoteOptions(line?.noteOptions || []);
     setAddonIds(line?.addonIds || []);
     setNote(line?.note || "");
@@ -587,11 +640,12 @@ export default function OnlineOrder() {
     if (wasEditing) void openCart();
   };
   const updateQuantity = (key: string, next: number) => {
-    const nextCart = next < 1
-      ? cart.filter((line) => line.key !== key)
-      : cart.map((line) =>
-          line.key === key ? { ...line, quantity: next } : line,
-        );
+    const nextCart =
+      next < 1
+        ? cart.filter((line) => line.key !== key)
+        : cart.map((line) =>
+            line.key === key ? { ...line, quantity: next } : line,
+          );
     setCart(nextCart);
     if (cartOpen) {
       void openCart(nextCart, false);
@@ -718,7 +772,11 @@ export default function OnlineOrder() {
         />
       )}
       {openingCart && (
-        <div className="fixed inset-0 z-[60] grid place-items-center bg-white/75 backdrop-blur-sm" role="status" aria-busy="true">
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-white/75 backdrop-blur-sm"
+          role="status"
+          aria-busy="true"
+        >
           <span className="h-12 w-12 animate-spin rounded-full border-4 border-[#8ac545] border-t-transparent" />
         </div>
       )}
@@ -753,7 +811,24 @@ export default function OnlineOrder() {
               {(cartAvailabilityError || unavailableCartItems.length > 0) && (
                 <div className="order-pricing-notice" role="alert">
                   <p>{copy.cartUnavailable}</p>
-                  <ul>{unavailableCartItems.map((entry, index) => <li key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}><span>{entry.kind === "item" ? copy.unavailableItem : copy.unavailableAddon}: </span><strong className="cart-unavailable-name">{entry.name}{entry.addonName ? ` - ${entry.addonName}` : ""}</strong></li>)}</ul>
+                  <ul>
+                    {unavailableCartItems.map((entry, index) => (
+                      <li
+                        key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}
+                      >
+                        <span>
+                          {entry.kind === "item"
+                            ? copy.unavailableItem
+                            : copy.unavailableAddon}
+                          :{" "}
+                        </span>
+                        <strong className="cart-unavailable-name">
+                          {entry.name}
+                          {entry.addonName ? ` - ${entry.addonName}` : ""}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
               <label className="locale-picker">
@@ -795,26 +870,26 @@ export default function OnlineOrder() {
           />
         </div>
         <nav
-            className="category-tabs !hidden min-[650px]:!sticky min-[650px]:!top-0 min-[650px]:!z-10 min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-x-auto min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
-            aria-label={copy.categories}
+          className="category-tabs !hidden min-[650px]:!sticky min-[650px]:!top-0 min-[650px]:!z-10 min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-x-auto min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
+          aria-label={copy.categories}
+        >
+          <button
+            aria-pressed={category === "all"}
+            className="min-[650px]:[&::after]:!hidden min-[650px]:!flex-none min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#a9c294] min-[650px]:!bg-white min-[650px]:!px-5 min-[650px]:!py-2.5 min-[650px]:!font-extrabold min-[650px]:!text-[#294b2d] min-[650px]:!shadow-[0_3px_8px_rgba(41,75,45,0.1)] min-[650px]:hover:!bg-[#dcefd0] min-[650px]:aria-pressed:!border-[#315b34] min-[650px]:aria-pressed:!bg-[#315b34] min-[650px]:aria-pressed:!text-white"
+            onClick={() => setCategory("all")}
           >
+            {copy.all}
+          </button>
+          {categories.map((entry) => (
             <button
-              aria-pressed={category === "all"}
-              className="min-[650px]:[&::after]:!hidden min-[650px]:!flex-none min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#a9c294] min-[650px]:!bg-white min-[650px]:!px-5 min-[650px]:!py-2.5 min-[650px]:!font-extrabold min-[650px]:!text-[#294b2d] min-[650px]:!shadow-[0_3px_8px_rgba(41,75,45,0.1)] min-[650px]:hover:!bg-[#dcefd0] min-[650px]:aria-pressed:!border-[#315b34] min-[650px]:aria-pressed:!bg-[#315b34] min-[650px]:aria-pressed:!text-white"
-              onClick={() => setCategory("all")}
+              key={entry.id}
+              aria-pressed={category === entry.id}
+              className="min-[650px]:[&::after]:!hidden min-[650px]:!flex-none min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#a9c294] min-[650px]:!bg-white min-[650px]:!px-5 min-[650px]:!py-2.5 min-[650px]:!font-extrabold min-[650px]:!text-[#294b2d] min-[650px]:!shadow-[0_3px_8px_rgba(41,75,55,0.1)] min-[650px]:hover:!bg-[#dcefd0] min-[650px]:aria-pressed:!border-[#315b34] min-[650px]:aria-pressed:!bg-[#315b34] min-[650px]:aria-pressed:!text-white"
+              onClick={() => setCategory(entry.id)}
             >
-              {copy.all}
+              {label(entry.names)}
             </button>
-            {categories.map((entry) => (
-              <button
-                key={entry.id}
-                aria-pressed={category === entry.id}
-                className="min-[650px]:[&::after]:!hidden min-[650px]:!flex-none min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#a9c294] min-[650px]:!bg-white min-[650px]:!px-5 min-[650px]:!py-2.5 min-[650px]:!font-extrabold min-[650px]:!text-[#294b2d] min-[650px]:!shadow-[0_3px_8px_rgba(41,75,55,0.1)] min-[650px]:hover:!bg-[#dcefd0] min-[650px]:aria-pressed:!border-[#315b34] min-[650px]:aria-pressed:!bg-[#315b34] min-[650px]:aria-pressed:!text-white"
-                onClick={() => setCategory(entry.id)}
-              >
-                {label(entry.names)}
-              </button>
-            ))}
+          ))}
         </nav>
         <div className="online-layout min-[650px]:!block min-[650px]:!pt-[22px]">
           <section>
@@ -834,14 +909,14 @@ export default function OnlineOrder() {
                         item.unavailable
                           ? copy.unavailable
                           : item.recommended
-                          ? copy.recommended
-                          : item.popular
-                            ? copy.popular
-                            : item.new
-                              ? copy.newProduct
-                              : item.promotion
-                                ? copy.promotion
-                                : undefined
+                            ? copy.recommended
+                            : item.popular
+                              ? copy.popular
+                              : item.new
+                                ? copy.newProduct
+                                : item.promotion
+                                  ? copy.promotion
+                                  : undefined
                       }
                       price={formatPrice(displayPrice, locale)}
                       originalPrice={
@@ -849,11 +924,21 @@ export default function OnlineOrder() {
                           ? formatPrice(item.price, locale)
                           : undefined
                       }
-                      addLabel={item.unavailable ? copy.unavailable : onlineOrderingEnabled ? copy.add : copy.dineInOnlyNotice}
+                      addLabel={
+                        item.unavailable
+                          ? copy.unavailable
+                          : onlineOrderingEnabled
+                            ? copy.add
+                            : copy.dineInOnlyNotice
+                      }
                       disabled={item.unavailable}
                       unavailable={item.unavailable}
                       showAction={onlineOrderingEnabled}
-                      onAdd={() => onlineOrderingEnabled && !item.unavailable && openItem(item)}
+                      onAdd={() =>
+                        onlineOrderingEnabled &&
+                        !item.unavailable &&
+                        openItem(item)
+                      }
                     />
                     <article className="menu-card online-menu-card !hidden min-[650px]:!flex min-[650px]:!min-h-[154px] min-[650px]:!flex-row min-[650px]:!rounded-[18px] min-[650px]:!border-[#dbe7d1] min-[650px]:!shadow-[0_7px_20px_rgba(61,75,55,0.1)] min-[650px]:hover:-translate-y-0.5 min-[650px]:hover:shadow-[0_12px_26px_rgba(61,75,55,0.15)]">
                       <div
@@ -871,7 +956,8 @@ export default function OnlineOrder() {
                         )}
                       </div>
                       <div className="menu-card-copy min-[650px]:!p-[15px_16px_14px]">
-                        {(item.unavailable || item.recommended ||
+                        {(item.unavailable ||
+                          item.recommended ||
                           item.popular ||
                           item.new ||
                           item.promotion) && (
@@ -879,12 +965,12 @@ export default function OnlineOrder() {
                             {item.unavailable
                               ? copy.unavailable
                               : item.recommended
-                              ? copy.recommended
-                              : item.popular
-                                ? copy.popular
-                                : item.new
-                                  ? copy.newProduct
-                                  : copy.promotion}
+                                ? copy.recommended
+                                : item.popular
+                                  ? copy.popular
+                                  : item.new
+                                    ? copy.newProduct
+                                    : copy.promotion}
                           </span>
                         )}
                         <p className="menu-name">{label(item.names)}</p>
@@ -901,8 +987,21 @@ export default function OnlineOrder() {
                             {formatPrice(displayPrice, locale)}
                           </strong>
                           {onlineOrderingEnabled && (
-                            <button disabled={item.unavailable} onClick={() => !item.unavailable && openItem(item)}>
-                              <span className={item.unavailable ? "unavailable-label" : undefined}>{item.unavailable ? copy.unavailable : copy.add}</span>
+                            <button
+                              disabled={item.unavailable}
+                              onClick={() =>
+                                !item.unavailable && openItem(item)
+                              }
+                            >
+                              <span
+                                className={
+                                  item.unavailable
+                                    ? "unavailable-label"
+                                    : undefined
+                                }
+                              >
+                                {item.unavailable ? copy.unavailable : copy.add}
+                              </span>
                             </button>
                           )}
                         </div>
@@ -956,10 +1055,16 @@ export default function OnlineOrder() {
                 </div>
                 <strong>
                   {quoteLoading ? (
-                    <span className="inline-block min-w-20 animate-pulse text-gray-300">…</span>
+                    <span className="inline-block min-w-20 animate-pulse text-gray-300">
+                      …
+                    </span>
                   ) : (
                     <>
-                      {originalTotal && <del className="mr-2 text-sm font-normal text-gray-400">{originalTotal}</del>}
+                      {originalTotal && (
+                        <del className="mr-2 text-sm font-normal text-gray-400">
+                          {originalTotal}
+                        </del>
+                      )}
                       {formatPrice(total, locale)}
                     </>
                   )}
@@ -983,7 +1088,10 @@ export default function OnlineOrder() {
                           )}
                           originalPrice={
                             lineOriginalPrice(line) > linePrice(line)
-                              ? formatPrice(lineOriginalPrice(line) * line.quantity, locale)
+                              ? formatPrice(
+                                  lineOriginalPrice(line) * line.quantity,
+                                  locale,
+                                )
                               : undefined
                           }
                           quantity={line.quantity}
@@ -1010,7 +1118,10 @@ export default function OnlineOrder() {
                             <small className="line-price">
                               {lineOriginalPrice(line) > linePrice(line) && (
                                 <del className="mr-1 font-normal text-gray-400">
-                                  {formatPrice(lineOriginalPrice(line) * line.quantity, locale)}
+                                  {formatPrice(
+                                    lineOriginalPrice(line) * line.quantity,
+                                    locale,
+                                  )}
                                 </del>
                               )}
                               {formatPrice(
@@ -1077,7 +1188,11 @@ export default function OnlineOrder() {
               )}
               <button
                 className="primary-button send-button"
-                disabled={!cart.length || cartAvailabilityError || unavailableCartItems.length > 0}
+                disabled={
+                  !cart.length ||
+                  cartAvailabilityError ||
+                  unavailableCartItems.length > 0
+                }
                 onClick={() => {
                   setCartOpen(false);
                   setCheckoutOpen(true);
@@ -1170,19 +1285,25 @@ export default function OnlineOrder() {
                           : [...selectedIds, optionId];
                     return [
                       ...others,
-                      ...next.map((id) => ({ groupId: group.id, optionId: id })),
+                      ...next.map((id) => ({
+                        groupId: group.id,
+                        optionId: id,
+                      })),
                     ];
                   });
                 return (
                   <fieldset key={group.id}>
                     <legend>
-                      {label(group.names)}{group.required ? " *" : ""}
+                      {label(group.names)}
+                      {group.required ? " *" : ""}
                     </legend>
                     <div className="choice-grid">
                       {group.options.map((option) => (
                         <button
                           key={option.id}
-                          className={selectedIds.includes(option.id) ? "selected" : ""}
+                          className={
+                            selectedIds.includes(option.id) ? "selected" : ""
+                          }
                           onClick={() => choose(option.id)}
                         >
                           {label(option.names)}
@@ -1301,7 +1422,17 @@ export default function OnlineOrder() {
                             )
                           }
                         >
-                          <span>{label(addon.names)}{addon.unavailable ? <span className="unavailable-label"> ({copy.unavailable})</span> : ''}</span>
+                          <span>
+                            {label(addon.names)}
+                            {addon.unavailable ? (
+                              <span className="unavailable-label">
+                                {" "}
+                                ({copy.unavailable})
+                              </span>
+                            ) : (
+                              ""
+                            )}
+                          </span>
                           <strong>
                             {displayPrice < addon.priceExtra && (
                               <small className="mr-1 line-through">

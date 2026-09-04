@@ -1,30 +1,43 @@
-import type { Metadata } from 'next'
-import Script from 'next/script'
-import PwaRegistration from '@/components/PwaRegistration'
-import './globals.css'
+import type { Metadata } from "next";
+import Script from "next/script";
+import PwaRegistration from "@/components/PwaRegistration";
+import "./globals.css";
 
 export const metadata: Metadata = {
-    title: '漫迷 Order',
-    applicationName: 'Mammi Order',
-    icons: {
-        icon: [
-            { url: '/favicon.png?v=1.0', type: 'image/png', media: '(prefers-color-scheme: dark)' },
-            { url: '/logo.png?v=1.0', type: 'image/png', media: '(prefers-color-scheme: light)' },
-        ],
-        shortcut: '/logo.png?v=1.0',
-        apple: '/logo.png?v=1.0',
-    },
-    robots: { index: false, follow: false },
-}
+  title: "漫迷 Order",
+  applicationName: "Mammi Order",
+  icons: {
+    icon: [
+      {
+        url: "/favicon.png?v=1.0",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+      {
+        url: "/logo.png?v=1.0",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+    ],
+    shortcut: "/logo.png?v=1.0",
+    apple: "/logo.png?v=1.0",
+  },
+  robots: { index: false, follow: false },
+};
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-    return (
-        <html lang='vi'>
-            <body className='min-h-screen bg-white text-black antialiased'>
-                <Script src='https://challenges.cloudflare.com/turnstile/v0/api.js' strategy='afterInteractive' />
-                <PwaRegistration />
-                {children}
-            </body>
-        </html>
-    )
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="vi">
+      <body className="min-h-screen bg-white text-black antialiased">
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+          strategy="afterInteractive"
+        />
+        <PwaRegistration />
+        {children}
+      </body>
+    </html>
+  );
 }

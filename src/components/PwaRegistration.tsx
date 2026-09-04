@@ -1,12 +1,16 @@
-'use client'
+"use client";
 
-import { useEffect } from 'react'
+import { useEffect } from "react";
 
 export default function PwaRegistration() {
-    useEffect(() => {
-        if (process.env.NODE_ENV !== 'production' || !('serviceWorker' in navigator)) return
-        void navigator.serviceWorker.register('/sw.js', { scope: '/' })
-    }, [])
+  useEffect(() => {
+    if (
+      process.env.NODE_ENV !== "production" ||
+      !("serviceWorker" in navigator)
+    )
+      return;
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  }, []);
 
-    return null
+  return null;
 }
