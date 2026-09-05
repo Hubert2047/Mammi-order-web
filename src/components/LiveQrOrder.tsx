@@ -2,6 +2,7 @@
 
 import {
   Fragment,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -149,8 +150,6 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
   >([]);
   const [loading, setLoading] = useState(true);
   const [menuReady, setMenuReady] = useState(false);
-  const [loadingScreenVisible, setLoadingScreenVisible] = useState(true);
-  const [loadingScreenLeaving, setLoadingScreenLeaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const [sessionUnavailable, setSessionUnavailable] = useState(false);
   const [sending, setSending] = useState(false);
@@ -169,6 +168,26 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     quoteToken: string;
   } | null>(null);
   const cartHydratedRef = useRef(false);
+  const cartPanelRef = useRef<HTMLDivElement>(null);
+  const cartFocusKeyRef = useRef<string | null>(null);
+  const restoreCartFocus = useCallback((panel: HTMLDivElement | null) => {
+    cartPanelRef.current = panel;
+    if (!panel || !cartFocusKeyRef.current) return;
+    window.requestAnimationFrame(() => {
+      const lineKey = cartFocusKeyRef.current;
+      if (!lineKey || cartPanelRef.current !== panel) return;
+      const target = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-cart-line-key]"),
+      ).find(
+        (element) =>
+          element.dataset.cartLineKey === lineKey &&
+          element.getClientRects().length > 0,
+      );
+      if (!target) return;
+      target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+      cartFocusKeyRef.current = null;
+    });
+  }, []);
 
   useEffect(() => {
     setLocale(detectLocale());
@@ -179,15 +198,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
 
     const frame = window.requestAnimationFrame(() => {
       setMenuReady(true);
-      setLoadingScreenLeaving(true);
     });
-    const timeout = window.setTimeout(
-      () => setLoadingScreenVisible(false),
-      300,
-    );
     return () => {
       window.cancelAnimationFrame(frame);
-      window.clearTimeout(timeout);
     };
   }, [failed, loading, localeReady, sessionUnavailable]);
   useLayoutEffect(() => {
@@ -442,6 +455,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
           addonName: label(addon.names),
         }));
     },
+  ).filter(
+    (entry, index, entries) =>
+      entries.findIndex(
+        (candidate) =>
+          candidate.kind === entry.kind &&
+          candidate.name === entry.name &&
+          candidate.addonName === entry.addonName,
+      ) === index,
   );
   useEffect(() => {
     if (!unavailableCartItems.length) setCartAvailabilityError(false);
@@ -484,6 +505,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
   }, [category]);
 
   const openItem = (item: MenuItem, line?: CartLine) => {
+    if (line) {
+      cartFocusKeyRef.current = line.key;
+    }
     setSelected(item);
     setEditingKey(line?.key || null);
     setCartOpen(line ? false : cartOpen);
@@ -512,6 +536,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
           })),
         ),
     );
+  };
+  const closeItem = () => {
+    const returnToCart = Boolean(editingKey);
+    setEditingKey(null);
+    setSelected(null);
+    if (returnToCart) setCartOpen(true);
   };
 
   const openCart = async (nextCart = cart, fullPageLoading = true) => {
@@ -588,6 +618,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     );
   const addToCart = () => {
     if (!selected) return;
+    const returnToCart = Boolean(editingKey);
     const line = {
       key: editingKey || createLineKey(),
       itemId: selected.id,
@@ -600,13 +631,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
       componentSelections:
         selected.type === "combo" ? componentSelections : undefined,
     };
-    setCart((old) =>
-      editingKey
-        ? old.map((current) => (current.key === editingKey ? line : current))
-        : [...old, line],
-    );
+    const nextCart = editingKey
+      ? cart.map((current) => (current.key === editingKey ? line : current))
+      : [...cart, line];
+    setCart(nextCart);
     setEditingKey(null);
     setSelected(null);
+    if (returnToCart) void openCart(nextCart, false);
   };
   const updateQuantity = (key: string, nextQuantity: number) => {
     const nextCart =
@@ -693,11 +724,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     }
   };
 
-  if (!localeReady) return <MenuLoadingState />;
+  if (!localeReady)
+    return (
+      <MenuLoadingState className="fixed inset-0 !h-auto !min-h-0 overflow-hidden" />
+    );
   if (failed || sessionUnavailable)
     return (
       <MenuLoadingState
-        className={sessionUnavailable ? "session-unavailable" : ""}
+        sessionUnavailable={sessionUnavailable}
         title={
           sessionUnavailable
             ? copy.tableSessionUnavailable
@@ -708,7 +742,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         description={
           <span
             className={
-              sessionUnavailable ? "session-unavailable-message" : undefined
+              sessionUnavailable
+                ? "mt-[14px] text-[clamp(1.1rem,4.5vw,1.45rem)]"
+                : undefined
             }
           >
             {sessionUnavailable
@@ -720,13 +756,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         }
       >
         {sessionUnavailable && table && (
-          <strong className="session-table-number">
+          <strong className="mt-[18px] block text-[clamp(1.6rem,7vw,2.4rem)] text-[#5f8c25]">
             {copy.table} {table}
           </strong>
         )}
         {sessionUnavailable && (
           <button
-            className="retry-link"
+            className="mt-[18px] block ml-auto border-0 bg-transparent text-[#5f8c25] font-bold underline"
             onClick={() => {
               setLoading(true);
               setFailed(false);
@@ -741,23 +777,33 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
     );
   if (completed)
     return (
-      <main className="order-shell">
-        <section className="success-card">
-          <div className="success-mark">✓</div>
-          <h1>{copy.orderSent}</h1>
-          <p className="payment-instruction !whitespace-normal break-words leading-relaxed">
+      <main className="mx-auto flex h-svh min-h-0 w-full max-w-[720px] flex-col overflow-hidden bg-white px-[18px] sm:px-[30px]">
+        <section className="m-auto w-full max-w-[440px] rounded-[28px] bg-white px-[14px] py-6 text-center shadow-[0_18px_50px_rgba(0,0,0,0.12)] sm:px-[30px] sm:py-[38px]">
+          <div className="mx-auto mb-[17px] grid size-[60px] place-items-center rounded-full bg-green-100 text-[2rem] font-extrabold text-green-700">
+            ✓
+          </div>
+          <h1 className="my-2 text-[clamp(1.7rem,7vw,2.35rem)] tracking-[-0.04em]">
+            {copy.orderSent}
+          </h1>
+          <p className="whitespace-normal break-words text-base leading-[1.65] tracking-[-0.02em]">
             {copy.paymentInstructionStart}
-            <strong>{copy.paymentInstructionCounter}</strong>{" "}
+            <strong className="text-[1.45em] text-red-600">
+              {copy.paymentInstructionCounter}
+            </strong>{" "}
             {copy.paymentInstructionMiddle}
-            <strong>{copy.paymentInstructionPay}</strong>
+            <strong className="text-[1.45em] text-red-600">
+              {copy.paymentInstructionPay}
+            </strong>
           </p>
-          <strong className="order-number">#{completed.number}</strong>
-          <p>{copy.orderSummary}</p>
-          <p>
-            {copy.table}: {completed.table} · {copy.totalItems}:{" "}
+          <strong className="my-6 block text-[4.3rem] tracking-[-0.08em] text-[#8ac545]">
+            #{completed.number}
+          </strong>
+          <p className="mt-2 text-[1.05rem]">{copy.orderSummary}</p>
+          <p className="mt-2 text-[1.05rem]">
+            {copy.table}: {completed.table} · {copy.totalItems}: {" "}
             {completed.count}
           </p>
-          <p>
+          <p className="mt-2 text-[1.05rem]">
             {copy.subtotal}: {formatPrice(completed.total, locale)}
           </p>
         </section>
@@ -766,10 +812,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
 
   return (
     <>
-      {loadingScreenVisible && (
-        <MenuLoadingState
-          className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? "opacity-0" : "opacity-100"}`}
-        />
+      {!menuReady && (
+        <MenuLoadingState className="fixed inset-0 z-50 !h-auto !min-h-0 overflow-hidden" />
       )}
       {openingCart && (
         <div
@@ -781,25 +825,26 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         </div>
       )}
       <main
-        className={`mx-auto flex h-[100svh] min-h-0 w-full max-w-[720px] flex-col overflow-hidden bg-white px-[18px] transition-opacity duration-300 ease-out sm:px-[30px] ${menuReady ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className={`qr-order-shell fixed inset-0 mx-auto flex h-auto min-h-0 w-full max-w-[720px] flex-col overscroll-none overflow-hidden bg-white px-[18px] sm:px-[30px] ${menuReady ? "" : "pointer-events-none opacity-0"}`}
       >
         <div className="sticky top-0 z-[5] -mx-[18px] w-[calc(100%+36px)] bg-white px-[18px] pt-2 sm:-mx-[30px] sm:w-[calc(100%+60px)] sm:px-[30px]">
           <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-stretch gap-x-3 gap-y-2">
             <div className="col-start-2 row-start-1 flex min-h-8 items-center justify-end gap-3">
-              <span className="table-badge">
+              <span className="whitespace-nowrap text-[0.85rem] text-gray-500">
                 {copy.table} {table}
               </span>
               <button
-                className="header-cart"
+                className="inline-flex items-center gap-1 rounded-xl border border-[#d8e9c3] bg-[#f7fbf2] px-[9px] py-[7px] text-[#5f8c25]"
                 onClick={() => void openCart()}
                 aria-label={copy.cart}
               >
                 <span aria-hidden="true">🛒</span>
                 <strong>{count}</strong>
               </button>
-              <label className="locale-picker">
+              <label>
                 <span className="sr-only">{copy.language}</span>
                 <select
+                  className="min-w-[58px] rounded-[99px] border border-gray-200 bg-white p-2 text-black"
                   value={locale}
                   onChange={(event) => {
                     const nextLocale = event.target.value as Locale;
@@ -862,7 +907,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         </div>
         <section
           ref={menuGridRef}
-          className="grid min-h-0 flex-1 align-content-start gap-3 overflow-y-auto overscroll-contain px-0.5 pb-[52px] sm:grid-cols-2"
+          className="grid min-h-0 flex-1 touch-manipulation content-start gap-3 overflow-y-auto overscroll-contain px-0.5 pb-[52px] sm:grid-cols-2"
         >
           {visibleItems.map((item) => {
             const displayPrice = item.displayPrice ?? item.price;
@@ -882,14 +927,23 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                   badge={item.unavailable ? copy.unavailable : undefined}
                   unavailable={item.unavailable}
                   disabled={item.unavailable}
+                  showAction={!item.unavailable}
                   onAdd={() => openItem(item)}
                 />
-                <article className="hidden min-h-[164px] flex-col overflow-hidden rounded-[20px] border border-gray-200 bg-white shadow-[0_5px_16px_rgba(0,0,0,0.06)] sm:flex">
+                <article className="hidden min-h-[164px] flex-col overflow-hidden rounded-[20px] border border-[#edf0e9] bg-white sm:flex">
                   <div
                     className="grid h-[104px] w-full place-items-center bg-gradient-to-br from-[#e8f5d6] to-[#cfe9a8] text-[3.7rem]"
                     aria-hidden="true"
                   >
-                    {item.imageUrl ? <img src={item.imageUrl} alt="" /> : "🍽️"}
+                    {item.imageUrl ? (
+                      <img
+                        className="h-full w-full object-contain"
+                        src={item.imageUrl}
+                        alt=""
+                      />
+                    ) : (
+                      "🍽️"
+                    )}
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col p-[15px]">
                     <p className="text-[1.05rem] font-extrabold text-black">
@@ -907,16 +961,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         )}
                         {formatPrice(displayPrice, locale)}
                       </strong>
-                      <button
-                        disabled={item.unavailable}
-                        onClick={() => openItem(item)}
-                      >
-                        <span
-                        className={item.unavailable ? "font-extrabold text-[#b91c1c] opacity-70" : undefined}
+                      {!item.unavailable && (
+                        <button
+                          className="rounded-[11px] border-0 bg-[#315b34] px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-[#48743f] disabled:bg-gray-300"
+                          onClick={() => openItem(item)}
                         >
-                          {item.unavailable ? copy.unavailable : copy.add}
-                        </span>
-                      </button>
+                          <span>{copy.add}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </article>
@@ -925,31 +977,14 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
           })}
         </section>
         <aside
-          className={`cart-dock fixed bottom-4 left-[max(16px,calc((100vw-720px)/2+18px))] right-[max(16px,calc((100vw-720px)/2+18px))] z-10 bg-transparent ${cartOpen ? "!z-30" : ""}`}
+          className="fixed inset-x-0 bottom-4 z-10 bg-transparent"
         >
-          <button
-            className="cart-summary relative z-[11] hidden w-full items-center justify-between rounded-[18px] border border-[#d8e9c3] bg-white/95 px-[15px] py-[11px] text-left text-black shadow-[0_-5px_22px_rgba(0,0,0,0.1)]"
-            onClick={() => void openCart()}
-          >
-            <div className="cart-heading">
-              <div>
-                <p className="eyebrow">{copy.cart}</p>
-                <span>
-                  {count} {copy.item}
-                </span>
-              </div>
-              <strong>
-                {originalTotal && (
-                  <del className="mr-2 text-sm font-normal text-gray-400">
-                    {originalTotal}
-                  </del>
-                )}
-                {formatPrice(total, locale)}
-              </strong>
-            </div>
-          </button>
+          {cartOpen && <div className="fixed inset-0 z-0 bg-black/30" onMouseDown={() => setCartOpen(false)} />}
           {cartOpen && (
-            <div className="cart-expanded fixed inset-0 z-[12] flex max-h-none flex-col overflow-auto border-0 bg-white px-6 py-6 shadow-none sm:px-[max(18px,calc((100vw-680px)/2))]">
+            <div
+              ref={restoreCartFocus}
+              className="fixed inset-0 z-[12] flex max-h-none flex-col overflow-auto border-0 bg-white px-6 py-6 text-base shadow-none sm:px-[max(18px,calc((100vw-680px)/2))]"
+            >
               <CartPanelHeader
                 cartLabel={copy.cart}
                 count={count}
@@ -957,17 +992,26 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 total={formatPrice(total, locale)}
                 originalTotal={originalTotal}
                 isQuoteLoading={quoteLoading}
+                unavailableMessage={
+                  cartAvailabilityError || unavailableCartItems.length > 0
+                    ? copy.removeUnavailableItemsToUpdateTotal
+                    : undefined
+                }
                 closeLabel={copy.cancel}
                 onClose={() => setCartOpen(false)}
                 className="-mx-[max(18px,calc((100vw-680px)/2))] -mt-6 sm:!hidden"
               />
-              <div className="cart-panel-header !hidden sm:!flex">
-                <div>
-                  <strong>
+              <div className="!hidden items-center justify-between gap-3 border-b border-gray-100 pb-[10px] text-[1.05rem] sm:!mb-3 sm:!flex">
+                <div className="grid gap-[3px]">
+                  <strong className="text-[1.4rem]">
                     {copy.cart} · {count} {copy.item}
                   </strong>
-                  <small className="cart-total">
-                    {quoteLoading ? (
+                  <small className="text-[1.4rem] font-extrabold leading-[1.3] text-[#8ac545]">
+                    {cartAvailabilityError || unavailableCartItems.length > 0 ? (
+                      <span className="text-[0.9rem] font-bold leading-snug text-red-600">
+                        {copy.removeUnavailableItemsToUpdateTotal}
+                      </span>
+                    ) : quoteLoading ? (
                       <span className="inline-block min-w-20 animate-pulse text-gray-300">
                         …
                       </span>
@@ -984,7 +1028,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                   </small>
                 </div>
                 <button
-                  className="icon-button"
+                  className="grid size-[27px] flex-none place-items-center rounded-full border border-gray-200 bg-white text-[1.2rem] text-[#5f8c25]"
                   onClick={() => setCartOpen(false)}
                   aria-label={copy.cancel}
                 >
@@ -992,9 +1036,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </button>
               </div>
               {cart.length === 0 ? (
-                <p className="cart-empty">{copy.cartEmptyDescription}</p>
+                <p className="my-2 text-[0.86rem]">{copy.cartEmptyDescription}</p>
               ) : (
-                <div className="cart-lines">
+                <div className="cart-lines flex flex-1 flex-col gap-2 overflow-y-auto">
                   {cart.map((line) => {
                     const item = items.find(
                       (candidate) => candidate.id === line.itemId,
@@ -1016,9 +1060,19 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     ]
                       .filter(Boolean)
                       .join(" · ");
+                    const lineUnavailable =
+                      Boolean(item?.unavailable) ||
+                      Boolean(
+                        item?.addons.some(
+                          (addon) =>
+                            line.addonIds.includes(addon.id) &&
+                            addon.unavailable,
+                        ),
+                      );
                     return (
                       <Fragment key={line.key}>
                         <CartLineItem
+                          lineKey={line.key}
                           name={item ? label(item.names) : ""}
                           price={formatPrice(
                             linePrice(line) * line.quantity,
@@ -1033,6 +1087,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                               : undefined
                           }
                           details={details}
+                          unavailable={lineUnavailable}
+                          unavailableLabel={lineUnavailable ? copy.unavailable : undefined}
                           quantity={line.quantity}
                           decreaseLabel={copy.decreaseQuantity}
                           increaseLabel={copy.increaseQuantity}
@@ -1047,10 +1103,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                           onCustomise={() => item && openItem(item, line)}
                           onRemove={() => updateQuantity(line.key, 0)}
                         />
-                        <div className="cart-line !hidden sm:!flex">
-                          <div>
-                            <strong>{item ? label(item.names) : ""}</strong>
-                            <small className="line-price">
+                        <div
+                          data-cart-line-key={line.key}
+                          className={`hidden items-center justify-between gap-4 border-b border-gray-100 px-2 py-3 font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:flex ${lineUnavailable ? "rounded-xl !border !border-red-300 bg-red-50" : ""}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <strong className="block text-[1rem] leading-tight text-[#29382c]">{item ? label(item.names) : ""}</strong>
+                            <small className="mt-[3px] block max-w-[230px] overflow-hidden text-[0.85rem] font-bold text-[#5f8c25]">
                               {lineOriginalPrice(line) > linePrice(line) && (
                                 <del className="mr-1 font-normal text-gray-400">
                                   {formatPrice(
@@ -1063,11 +1122,16 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 linePrice(line) * line.quantity,
                                 locale,
                               )}
+                              {lineUnavailable ? (
+                                <span className="ml-2 text-[0.78rem] font-bold text-red-600">
+                                  {copy.unavailable}
+                                </span>
+                              ) : null}
                             </small>
-                            <small>{details}</small>
+                            <small className="mt-1 block max-w-[230px] truncate text-[0.78rem] text-gray-500">{details}</small>
                           </div>
-                          <div className="line-actions">
-                            <div className="line-quantity-actions">
+                          <div className="ml-auto flex items-center gap-4">
+                            <div className="flex items-center gap-2">
                               <button
                                 type="button"
                                 aria-label={copy.decreaseQuantity}
@@ -1088,25 +1152,25 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 <span className="quantity-symbol">+</span>
                               </button>
                             </div>
-                            <div className="line-item-actions">
+                            <div className="flex items-center gap-1.5">
                               <button
-                                className="icon-button"
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-[#d9e6d3] bg-white p-0 text-[#426b38]"
                                 type="button"
                                 aria-label={copy.customise}
                                 onClick={() => item && openItem(item, line)}
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="m4 16.5-.8 4.3 4.3-.8L19.1 8.4l-3.5-3.5L4 16.5Z" />
                                   <path d="m13.8 6.7 3.5 3.5" />
                                 </svg>
                               </button>
                               <button
-                                className="cart-remove-button"
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-red-200 bg-white p-0 text-red-600 hover:bg-red-50"
                                 type="button"
                                 aria-label={copy.remove}
                                 onClick={() => updateQuantity(line.key, 0)}
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6" />
                                 </svg>
                               </button>
@@ -1119,12 +1183,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </div>
               )}
               {pricingChanged && (
-                <p className="order-pricing-notice" role="alert">
+                <p className="my-3 rounded-[10px] border border-[#f0b429] bg-[#fff8e6] px-3 py-2.5 text-[0.9rem] font-semibold text-[#7a4a00]" role="alert">
                   {copy.orderPricingChanged}
                 </p>
               )}
               {(cartAvailabilityError || unavailableCartItems.length > 0) && (
-                <div className="order-pricing-notice" role="alert">
+                <div className="my-3 rounded-[10px] border border-[#f0b429] bg-[#fff8e6] px-3 py-2.5 text-[0.9rem] font-semibold text-[#7a4a00]" role="alert">
                   <p>{copy.cartUnavailable}</p>
                   <ul>
                     {unavailableCartItems.map((entry, index) => (
@@ -1137,7 +1201,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                             : copy.unavailableAddon}
                           :{" "}
                         </span>
-                        <strong className="cart-unavailable-name">
+                        <strong className="font-extrabold text-red-700">
                           {entry.name}
                           {entry.addonName ? ` - ${entry.addonName}` : ""}
                         </strong>
@@ -1147,7 +1211,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                 </div>
               )}
               <button
-                className="primary-button send-button"
+                className="mt-auto mb-[calc(32px+env(safe-area-inset-bottom))] w-full rounded-xl bg-[#315b34] px-4 py-3 font-bold text-white transition-colors hover:bg-[#48743f] disabled:cursor-not-allowed disabled:opacity-50 max-[649px]:!mt-2"
                 disabled={
                   !cart.length ||
                   sending ||
@@ -1163,57 +1227,60 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
         </aside>
         {selected && (
           <div
-            className="modal-backdrop !z-[9]"
-            onMouseDown={() => setSelected(null)}
+            className="fixed inset-0 z-[9] flex items-center justify-center bg-[rgba(0,0,0,0.46)] p-6 max-[649px]:items-end max-[649px]:p-0"
+            onMouseDown={closeItem}
           >
             <section
-              className="customise-sheet max-[649px]:!pb-[calc(72px+env(safe-area-inset-bottom))]"
+              className="customise-sheet relative z-[31] flex min-h-[320px] max-h-[91svh] w-[min(100%,720px)] flex-col overflow-y-auto rounded-[30px] bg-[#fffdf9] p-8 text-[#24312a] shadow-[0_26px_80px_rgba(24,38,25,0.24)] max-[649px]:fixed max-[649px]:inset-x-0 max-[649px]:bottom-0 max-[649px]:min-h-0 max-[649px]:max-h-[92svh] max-[649px]:w-full max-[649px]:rounded-t-[25px] max-[649px]:px-[18px] max-[649px]:pb-[calc(96px+env(safe-area-inset-bottom))]"
               role="dialog"
               aria-modal="true"
               aria-label={copy.customise}
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className="sheet-title">
+              <div className="flex items-start justify-between gap-3 border-b border-[#edf0e9] pb-4">
                 <div>
-                  <p className="eyebrow">{copy.customise}</p>
-                  <h2>{label(selected.names)}</h2>
+                  <p className="text-[0.825rem] font-extrabold text-[#526f47]">{copy.customise}</p>
+                  <h2 className="text-[clamp(1.5rem,4vw,1.9rem)] font-extrabold text-[#253228]">{label(selected.names)}</h2>
                 </div>
                 <button
-                  className="icon-button"
-                  onClick={() => setSelected(null)}
+                  className="relative top-1 -left-px grid h-[38px] w-[38px] flex-none place-items-center rounded-full border-0 bg-[#eef3ea] p-0 text-[#526052]"
+                  onClick={closeItem}
                   aria-label={copy.cancel}
                 >
-                  <span className="modal-close-symbol">×</span>
+                  <span className="modal-close-symbol relative -top-px text-2xl leading-none">×</span>
                 </button>
               </div>
-              <div className="quantity-row">
+              <div className="mb-2 flex items-center justify-between gap-3 border-y border-[#edf0e9] py-3 font-bold text-[#344535]">
                 <span>{copy.quantity}</span>
-                <div className="stepper">
+                <div className="flex items-center gap-2">
                   <button
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dce7d7] bg-white p-0 text-xl leading-none text-[#426b38]"
                     aria-label={copy.decreaseQuantity}
                     onClick={() =>
                       setQuantity((value) => Math.max(1, value - 1))
                     }
                   >
-                    <span className="quantity-symbol">−</span>
+                    <span className="quantity-symbol relative -top-px">−</span>
                   </button>
                   <strong>{quantity}</strong>
                   <button
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#dce7d7] bg-white p-0 text-xl leading-none text-[#426b38]"
                     aria-label={copy.increaseQuantity}
                     onClick={() => setQuantity((value) => value + 1)}
                   >
-                    <span className="quantity-symbol">+</span>
+                    <span className="quantity-symbol relative -top-px">+</span>
                   </button>
                 </div>
               </div>
               {selected.variants.length > 0 && (
                 <fieldset>
                   <legend>{copy.variant}</legend>
-                  <div className="choice-grid">
+                  <div className="flex flex-wrap gap-2">
                     {selected.variants.map((choice) => (
                       <button
                         key={choice.id}
-                        className={variant === choice.id ? "selected" : ""}
+                        className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] ${variant === choice.id ? "border-[#88b477] bg-[#eaf4e5] font-bold text-[#31552e]" : ""}`}
+                        aria-pressed={variant === choice.id}
                         onClick={() => setVariant(choice.id)}
                       >
                         {label(choice.names)}
@@ -1250,18 +1317,17 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     ];
                   });
                 return (
-                  <fieldset key={group.id}>
-                    <legend>
+                  <fieldset key={group.id} className="my-5 border-0 p-0">
+                    <legend className="mb-3 font-extrabold text-[#344535]">
                       {label(group.names)}
                       {group.required ? " *" : ""}
                     </legend>
-                    <div className="choice-grid">
+                    <div className="flex flex-wrap gap-2">
                       {group.options.map((option) => (
                         <button
                           key={option.id}
-                          className={
-                            selectedIds.includes(option.id) ? "selected" : ""
-                          }
+                          className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] ${selectedIds.includes(option.id) ? "border-[#88b477] bg-[#eaf4e5] font-bold text-[#31552e]" : ""}`}
+                          aria-pressed={selectedIds.includes(option.id)}
                           onClick={() => choose(option.id)}
                         >
                           {label(option.names)}
@@ -1273,9 +1339,9 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
               })}
               {selected.type === "combo" &&
                 (selected.components?.length || 0) > 0 && (
-                  <fieldset className="combo-components-fieldset">
-                    <legend>{copy.comboComponents}</legend>
-                    <div className="component-list">
+                  <fieldset className="my-5 border-0 p-0">
+                    <legend className="mb-3 font-extrabold text-[#344535]">{copy.comboComponents}</legend>
+                    <div className="grid gap-2.5">
                       {componentSelections.map((selection, index) => {
                         const component = selected.components?.find((entry) =>
                           selection.componentId.startsWith(entry.componentId),
@@ -1284,10 +1350,10 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         return (
                           <details
                             key={selection.componentId}
-                            className="component-card"
+                            className="overflow-hidden rounded-xl border border-[#dce7d7] bg-white"
                             open={index === 0}
                           >
-                            <summary>
+                            <summary className="flex cursor-pointer items-center justify-between px-3 py-2.5 font-bold text-[#344535]">
                               {label(component.names)}{" "}
                               {(selected.components?.filter(
                                 (entry) => entry.itemId === component.itemId,
@@ -1295,16 +1361,13 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 ? index + 1
                                 : ""}
                             </summary>
-                            <div className="component-options">
-                              <div className="choice-grid">
+                            <div className="border-t border-[#edf2e9] p-3">
+                              <div className="flex flex-wrap gap-2">
                                 {component.noteOptions.map((choice) => (
                                   <button
                                     key={choice.id}
-                                    className={
-                                      selection.noteOptions.includes(choice.id)
-                                        ? "selected"
-                                        : ""
-                                    }
+                                    className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${selection.noteOptions.includes(choice.id) ? "border-[#88b477] bg-[#eaf4e5] font-bold text-[#31552e]" : ""}`}
+                                    aria-pressed={selection.noteOptions.includes(choice.id)}
                                     onClick={() =>
                                       setComponentSelections((current) =>
                                         current.map((entry) =>
@@ -1335,6 +1398,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                                 ))}
                               </div>
                               <textarea
+                                className="mt-2 min-h-[64px] w-full resize-y rounded-lg border border-[#dce7d7] bg-white px-3 py-2 text-sm text-[#344535] focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                                 value={selection.note || ""}
                                 maxLength={40}
                                 placeholder={copy.notePlaceholder}
@@ -1359,13 +1423,12 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
               {selected.noteOptions.length > 0 && (
                 <fieldset>
                   <legend>{copy.noThanks}</legend>
-                  <div className="choice-grid">
+                  <div className="flex flex-wrap gap-2">
                     {selected.noteOptions.map((choice) => (
                       <button
                         key={choice.id}
-                        className={
-                          noteOptions.includes(choice.id) ? "selected" : ""
-                        }
+                        className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${noteOptions.includes(choice.id) ? "border-[#88b477] bg-[#eaf4e5] font-bold text-[#31552e]" : ""}`}
+                        aria-pressed={noteOptions.includes(choice.id)}
                         onClick={() =>
                           toggle(choice.id, noteOptions, setNoteOptions)
                         }
@@ -1379,7 +1442,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
               {selected.addons.length > 0 && (
                 <fieldset>
                   <legend>{copy.addons}</legend>
-                  <div className="addon-list qr-addon-list">
+                  <div className="grid grid-cols-1 gap-2">
                     {selected.addons.map((addon) => {
                       const displayPrice =
                         addon.displayPrice ?? addon.priceExtra;
@@ -1387,9 +1450,8 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                         <button
                           key={addon.id}
                           disabled={addon.unavailable}
-                          className={
-                            addonIds.includes(addon.id) ? "selected" : ""
-                          }
+                          className={`flex items-center justify-between gap-2 rounded-xl border border-[#dce7d7] bg-white px-3 py-2.5 text-left text-[#344535] transition-colors disabled:cursor-not-allowed disabled:opacity-55 aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] ${addonIds.includes(addon.id) ? "border-[#88b477] bg-[#eaf4e5] font-bold text-[#31552e]" : ""}`}
+                          aria-pressed={addonIds.includes(addon.id)}
                           onClick={() =>
                             toggle(addon.id, addonIds, setAddonIds)
                           }
@@ -1419,18 +1481,18 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                   </div>
                 </fieldset>
               )}
-              <label className="note-field">
-                <span>{copy.note}</span>
+              <label className="grid gap-2">
+                <span className="mb-3 font-extrabold text-[#344535]">{copy.note}</span>
                 <textarea
-                  className="focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
+                  className="min-h-[82px] resize-y rounded-xl border border-[#dce7d7] bg-white px-3 py-2.5 focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={note}
                   maxLength={40}
                   onFocus={(event) => scrollTextareaIntoView(event.currentTarget)}
                   onChange={(event) => setNote(event.target.value)}
                 />
               </label>
-              <div className="sheet-footer">
-                <strong>
+              <div className="mt-6 flex items-center justify-between gap-3 max-[649px]:mb-1">
+                <strong className="min-w-max text-[1.25rem]">
                   {formatPrice(
                     quantity *
                       (selected.price +
@@ -1440,7 +1502,7 @@ export default function LiveQrOrder({ qrToken }: { qrToken: string }) {
                     locale,
                   )}
                 </strong>
-                <button className="primary-button" onClick={addToCart}>
+                <button className="flex-1 rounded-xl bg-[#315b34] px-4 py-3 font-bold text-white transition-colors hover:bg-[#48743f]" onClick={addToCart}>
                   {editingKey ? copy.updateItem : copy.addToCart}
                 </button>
               </div>

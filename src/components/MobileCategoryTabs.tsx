@@ -24,7 +24,7 @@ export default function MobileCategoryTabs({
         const active = tab.id === selectedId;
         return (
           <button
-            className={`relative border-0 bg-transparent px-0 py-2 text-[0.95rem] font-bold transition-colors ${active ? "text-[#315b34] after:absolute after:inset-x-0 after:bottom-[3px] after:h-0.5 after:bg-[#315b34] after:content-['']" : "text-[#6b7280]"}`}
+            className={`relative whitespace-nowrap border-0 bg-transparent px-0 py-2 text-[0.95rem] font-bold transition-colors ${active ? "text-[#315b34] after:absolute after:inset-x-0 after:bottom-[3px] after:h-0.5 after:bg-[#315b34] after:content-['']" : "text-[#6b7280]"}`}
             key={tab.id}
             onClick={() => onSelect(tab.id)}
           >

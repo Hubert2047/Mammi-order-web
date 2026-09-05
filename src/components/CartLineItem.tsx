@@ -3,6 +3,9 @@ type CartLineItemProps = {
   price: string;
   originalPrice?: string;
   details?: string;
+  unavailable?: boolean;
+  unavailableLabel?: string;
+  lineKey?: string;
   quantity: number;
   decreaseLabel: string;
   increaseLabel: string;
@@ -19,6 +22,9 @@ export default function CartLineItem({
   price,
   originalPrice,
   details,
+  unavailable = false,
+  unavailableLabel,
+  lineKey,
   quantity,
   decreaseLabel,
   increaseLabel,
@@ -30,7 +36,10 @@ export default function CartLineItem({
   onRemove,
 }: CartLineItemProps) {
   return (
-    <div className="flex sm:hidden items-center gap-3 border-b border-gray-100 py-[11px] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif]">
+    <div
+      data-cart-line-key={lineKey}
+      className={`flex items-center gap-3 border-b border-gray-100 px-1 py-3 font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:hidden ${unavailable ? "rounded-xl !border border-red-300 bg-red-50" : ""}`}
+    >
       <div className="min-w-0 flex-1">
         <strong className="block text-[1.125rem] leading-[1.25] text-[#29382c] [overflow-wrap:anywhere]">
           {name}
@@ -42,6 +51,11 @@ export default function CartLineItem({
             </del>
           )}
           {price}
+          {unavailableLabel ? (
+            <span className="ml-2 text-[0.78rem] font-bold text-red-600">
+              {unavailableLabel}
+            </span>
+          ) : null}
         </small>
         {details && (
           <small className="mt-0.5 block truncate text-[0.78rem] text-gray-500">

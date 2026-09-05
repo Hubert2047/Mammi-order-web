@@ -18,7 +18,7 @@ const messages = {
     orderType: "Nhận món",
     dineIn: "Tại quán",
     takeaway: "Mang đi",
-    checkout: "Thông tin đặt món",
+    checkout: "Thông Tin Đặt Món",
     phone: "Số điện thoại",
     address: "Địa chỉ",
     continueOrder: "Xác nhận đơn",
@@ -43,6 +43,8 @@ const messages = {
     cartEmpty: "Giỏ món của bạn đang trống",
     cartEmptyDescription: "Hãy chọn món đầu tiên nhé.",
     cartUnavailable: "Vui lòng xoá các mục sau trước khi gửi đơn:",
+    removeUnavailableItemsToUpdateTotal:
+      "Xóa món tạm hết để cập nhật tổng tiền.",
     unavailableItem: "Ngừng bán món",
     unavailableAddon: "Ngừng bán topping",
     item: "món",
@@ -98,7 +100,7 @@ const messages = {
     orderType: "Order type",
     dineIn: "Dine-in",
     takeaway: "Takeaway",
-    checkout: "Order details",
+    checkout: "Order Details",
     phone: "Phone number",
     address: "Address",
     continueOrder: "Confirm Order",
@@ -125,6 +127,8 @@ const messages = {
     cartEmptyDescription: "Choose your first item to get started.",
     cartUnavailable:
       "Please remove the following items before sending the order:",
+    removeUnavailableItemsToUpdateTotal:
+      "Remove unavailable items to update the total.",
     unavailableItem: "Item unavailable",
     unavailableAddon: "Topping unavailable",
     item: "items",
@@ -202,6 +206,7 @@ const messages = {
     cartEmpty: "購物車是空的",
     cartEmptyDescription: "先選一道餐點吧。",
     cartUnavailable: "請先從購物車中移除以下項目，再送出訂單：",
+    removeUnavailableItemsToUpdateTotal: "請移除停售餐點以更新總金額。",
     unavailableItem: "餐點停售",
     unavailableAddon: "加料停售",
     item: "項",

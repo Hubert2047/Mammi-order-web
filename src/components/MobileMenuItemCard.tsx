@@ -26,7 +26,7 @@ export default function MobileMenuItemCard({
   onAdd,
 }: MobileMenuItemCardProps) {
   return (
-    <article className="flex min-h-36 sm:hidden overflow-hidden rounded-[22px] bg-white shadow-[0_8px_28px_rgba(61,75,55,0.1)] font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif]">
+    <article className="flex min-h-36 overflow-hidden rounded-[22px] border border-[#edf0e9] bg-white font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:hidden">
       <div
         className="grid w-[124px] flex-none place-items-center overflow-hidden bg-[linear-gradient(140deg,#eef4e8,#d9e9cd)] text-[3.7rem]"
         aria-hidden="true"
@@ -60,13 +60,17 @@ export default function MobileMenuItemCard({
             )}
             {price}
           </strong>
-          {showAction && (
+          {showAction && !unavailable && (
             <button
               disabled={disabled}
               className="flex-none rounded-xl bg-[#2e4b2d] px-[13px] py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
               onClick={onAdd}
             >
-              <span className={unavailable ? "unavailable-label" : undefined}>
+              <span
+                className={
+                  unavailable ? "font-extrabold text-[#b91c1c]" : undefined
+                }
+              >
                 {addLabel}
               </span>
             </button>

@@ -3,6 +3,7 @@
 import {
   Fragment,
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -12,6 +13,7 @@ import { io } from "socket.io-client";
 import { type Locale, t } from "@/lib/i18n";
 import CartLineItem from "@/components/CartLineItem";
 import CartPanelHeader from "@/components/CartPanelHeader";
+import OnlineCartDrawer from "@/components/OnlineCartDrawer";
 import MobileCategoryTabs from "@/components/MobileCategoryTabs";
 import MobileMenuItemCard from "@/components/MobileMenuItemCard";
 import MobileStoreFooter from "@/components/MobileStoreFooter";
@@ -198,7 +200,6 @@ export default function OnlineOrder() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [pricingChanged, setPricingChanged] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
-  const [openingCart, setOpeningCart] = useState(false);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [cartAvailabilityError, setCartAvailabilityError] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
@@ -207,6 +208,30 @@ export default function OnlineOrder() {
   const widgetId = useRef<string | null>(null);
   const customiseSheetRef = useRef<HTMLElement | null>(null);
   const menuGridRef = useRef<HTMLDivElement | null>(null);
+  const cartLinesRef = useRef<HTMLDivElement | null>(null);
+  const cartFocusKeyRef = useRef<string | null>(null);
+  const restoreCartFocus = useCallback((panel: HTMLDivElement | null) => {
+    cartLinesRef.current = panel;
+    if (!panel || !cartFocusKeyRef.current) return;
+    window.requestAnimationFrame(() => {
+      const lineKey = cartFocusKeyRef.current;
+      if (!lineKey || cartLinesRef.current !== panel) return;
+      const target = Array.from(
+        panel.querySelectorAll<HTMLElement>("[data-cart-line-key]"),
+      ).find(
+        (element) =>
+          element.dataset.cartLineKey === lineKey &&
+          element.getClientRects().length > 0,
+      );
+      if (!target) return;
+      target.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+        behavior: "auto",
+      });
+      cartFocusKeyRef.current = null;
+    });
+  }, []);
   const quoteCache = useRef<{
     key: string;
     total: number;
@@ -219,17 +244,30 @@ export default function OnlineOrder() {
   useLayoutEffect(() => {
     const modalOpen = Boolean(selected || cartOpen || checkoutOpen);
     if (!modalOpen) return;
+    // Desktop overlays keep their own scroll area. Preserve the page gutter
+    // while locking the document so the storefront does not shift horizontally.
+    if (selected)
+      customiseSheetRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    const desktop = window.matchMedia("(min-width: 650px)").matches;
+    if (desktop) {
+      const previousBodyOverflow = document.body.style.overflow;
+      const previousHtmlOverflow = document.documentElement.style.overflow;
+      const previousScrollbarGutter =
+        document.documentElement.style.scrollbarGutter;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      document.documentElement.style.scrollbarGutter = "stable";
+      return () => {
+        document.body.style.overflow = previousBodyOverflow;
+        document.documentElement.style.overflow = previousHtmlOverflow;
+        document.documentElement.style.scrollbarGutter = previousScrollbarGutter;
+      };
+    }
     const previousOverflow = document.body.style.overflow;
     const previousPaddingRight = document.body.style.paddingRight;
     const previousHtmlOverflow = document.documentElement.style.overflow;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
-    if (scrollbarWidth > 0)
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    if (selected)
-      customiseSheetRef.current?.scrollTo({ top: 0, behavior: "auto" });
     return () => {
       document.body.style.overflow = previousOverflow;
       document.body.style.paddingRight = previousPaddingRight;
@@ -257,6 +295,49 @@ export default function OnlineOrder() {
       window.removeEventListener("resize", updateHeightState);
     };
   }, [selected]);
+  useEffect(() => {
+    if (
+      !Boolean(selected || cartOpen || checkoutOpen) ||
+      !window.matchMedia("(min-width: 650px)").matches
+    )
+      return;
+
+    const isOverlayContent = (target: EventTarget | null) =>
+      target instanceof Element &&
+      Boolean(
+        target.closest(
+          ".customise-sheet, .checkout-card, .online-cart",
+        ),
+      );
+    const preventOutsideScroll = (event: Event) => {
+      if (!isOverlayContent(event.target)) event.preventDefault();
+    };
+    const preventOutsideScrollKeys = (event: KeyboardEvent) => {
+      if (
+        isOverlayContent(event.target) ||
+        !["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(
+          event.key,
+        )
+      )
+        return;
+      event.preventDefault();
+    };
+
+    window.addEventListener("wheel", preventOutsideScroll, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("touchmove", preventOutsideScroll, {
+      capture: true,
+      passive: false,
+    });
+    window.addEventListener("keydown", preventOutsideScrollKeys, true);
+    return () => {
+      window.removeEventListener("wheel", preventOutsideScroll, true);
+      window.removeEventListener("touchmove", preventOutsideScroll, true);
+      window.removeEventListener("keydown", preventOutsideScrollKeys, true);
+    };
+  }, [selected, cartOpen, checkoutOpen]);
   const label = (value: Text) => value[locale] || value.vi;
   useEffect(() => {
     window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
@@ -401,16 +482,25 @@ export default function OnlineOrder() {
           addonName: label(addon.names),
         }));
     },
+  ).filter(
+    (entry, index, entries) =>
+      entries.findIndex(
+        (candidate) =>
+          candidate.kind === entry.kind &&
+          candidate.name === entry.name &&
+          candidate.addonName === entry.addonName,
+      ) === index,
   );
   useEffect(() => {
     if (!unavailableCartItems.length) setCartAvailabilityError(false);
   }, [unavailableCartItems.length]);
 
-  const openCart = async (nextCart = cart, fullPageLoading = true) => {
+  const openCart = async (nextCart = cart) => {
     if (!nextCart.length) {
       setCartOpen(true);
       return;
     }
+    setCartOpen(true);
     if (!cartToken) return;
 
     const lines = nextCart.map(({ key, ...line }) => line);
@@ -423,8 +513,7 @@ export default function OnlineOrder() {
       return;
     }
 
-    if (fullPageLoading) setOpeningCart(true);
-    else setQuoteLoading(true);
+    setQuoteLoading(true);
     try {
       const response = await fetch(
         `${base}/api/public/carts/${cartToken}/preview`,
@@ -464,8 +553,7 @@ export default function OnlineOrder() {
       setPromotionTotal(quoteTotal);
       setCartOpen(true);
     } finally {
-      if (fullPageLoading) setOpeningCart(false);
-      else setQuoteLoading(false);
+      setQuoteLoading(false);
     }
   };
 
@@ -477,14 +565,25 @@ export default function OnlineOrder() {
       setItems(payload.items);
       setStoreName(payload.store.name);
       setRealtimeToken(payload.realtimeToken);
-      if (!cartToken && onlineOrderingEnabled) {
+      let activeCartToken = cartToken;
+      if (activeCartToken && onlineOrderingEnabled) {
+        const saved = await fetch(`${base}/api/public/carts/${activeCartToken}`);
+        const savedPayload = await saved.json().catch(() => null);
+        if (!saved.ok || savedPayload?.data?.status !== "draft") {
+          window.localStorage.removeItem(cartTokenStorageKey);
+          setCartToken("");
+          activeCartToken = "";
+        }
+      }
+      if (!activeCartToken && onlineOrderingEnabled) {
         const created = await fetch(`${base}/api/public/online/carts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type }),
         });
         if (!created.ok) throw new Error();
-        setCartToken((await created.json()).data.cartToken);
+        activeCartToken = (await created.json()).data.cartToken;
+        setCartToken(activeCartToken);
       }
       setFailed(false);
     } catch {
@@ -595,6 +694,7 @@ export default function OnlineOrder() {
   }, [checkoutOpen, turnstileReady]);
 
   const openItem = (item: MenuItem, line?: CartLine) => {
+    if (line) cartFocusKeyRef.current = line.key;
     setSelected(item);
     setEditingLineKey(line?.key || null);
     setQuantity(line?.quantity || 1);
@@ -644,14 +744,13 @@ export default function OnlineOrder() {
       componentSelections:
         selected.type === "combo" ? componentSelections : undefined,
     };
-    setCart((old) =>
-      editingLineKey
-        ? old.map((line) => (line.key === editingLineKey ? nextLine : line))
-        : [...old, nextLine],
-    );
+    const nextCart = editingLineKey
+      ? cart.map((line) => (line.key === editingLineKey ? nextLine : line))
+      : [...cart, nextLine];
+    setCart(nextCart);
     setSelected(null);
     setEditingLineKey(null);
-    if (wasEditing) void openCart();
+    if (wasEditing) void openCart(nextCart);
   };
   const updateQuantity = (key: string, next: number) => {
     const nextCart =
@@ -662,7 +761,7 @@ export default function OnlineOrder() {
           );
     setCart(nextCart);
     if (cartOpen) {
-      void openCart(nextCart, false);
+      void openCart(nextCart);
     }
   };
   const confirm = async () => {
@@ -758,15 +857,25 @@ export default function OnlineOrder() {
     );
   if (completed !== null)
     return (
-      <main className="page">
-        <section className="success-card">
-          <div className="success-mark">✓</div>
-          <p className="eyebrow">{copy.brand}</p>
-          <h1>{copy.orderSent}</h1>
-          <strong className="order-number">#{completed}</strong>
-          <p>{copy.onlineOrderSentDescription}</p>
+      <main className="grid min-h-svh place-items-center bg-[#f8f6f1] p-6">
+        <section className="w-full max-w-[440px] rounded-[28px] bg-white px-7 py-9 text-center shadow-[0_18px_50px_rgba(0,0,0,0.12)]">
+          <div className="mx-auto mb-[17px] grid size-[60px] place-items-center rounded-full bg-green-100 text-[2rem] font-extrabold text-green-700">
+            ✓
+          </div>
+          <p className="mb-2 text-sm font-bold uppercase tracking-[0.12em] text-[#5f8c25]">
+            {copy.brand}
+          </p>
+          <h1 className="my-2 text-[clamp(1.7rem,7vw,2.35rem)] tracking-[-0.04em]">
+            {copy.orderSent}
+          </h1>
+          <strong className="my-6 block text-[4.3rem] tracking-[-0.08em] text-[#8ac545]">
+            #{completed}
+          </strong>
+          <p className="mb-6 text-base leading-[1.65] text-gray-600">
+            {copy.onlineOrderSentDescription}
+          </p>
           <button
-            className="primary-button"
+            className="w-full rounded-xl bg-[#8ac545] px-5 py-3 font-bold text-white shadow-sm transition hover:bg-[#78b136] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#5f8c25]"
             onClick={() => {
               setCompleted(null);
               void load();
@@ -785,36 +894,27 @@ export default function OnlineOrder() {
           className={`fixed inset-0 z-50 transition-opacity duration-300 ease-out ${loadingScreenLeaving ? "opacity-0" : "opacity-100"}`}
         />
       )}
-      {openingCart && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-white/75 backdrop-blur-sm"
-          role="status"
-          aria-busy="true"
-        >
-          <span className="h-12 w-12 animate-spin rounded-full border-4 border-[#8ac545] border-t-transparent" />
-        </div>
-      )}
       <main
-        className={`online-shell min-[650px]:!w-full min-[650px]:!max-w-[1160px] min-[650px]:!bg-transparent min-[650px]:!px-7 min-[650px]:!pb-[72px] transition-[opacity,transform] duration-300 ease-out ${menuReady ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-1 opacity-0"}`}
+        className={`online-shell fixed inset-0 mx-auto flex h-svh min-h-0 w-full flex-col overflow-hidden bg-white px-[18px] pb-0 transition-opacity duration-300 ease-out min-[650px]:!static min-[650px]:!block min-[650px]:!h-auto min-[650px]:!min-h-svh min-[650px]:!w-full min-[650px]:!max-w-[1160px] min-[650px]:!overflow-visible min-[650px]:!bg-transparent min-[650px]:!px-7 min-[650px]:!pb-[72px] ${menuReady ? "opacity-100" : "pointer-events-none opacity-0"}`}
       >
-        <div className="online-menu-sticky min-[650px]:!static min-[650px]:!m-0 min-[650px]:!w-auto min-[650px]:!bg-transparent min-[650px]:!p-0">
-          <header className="menu-header online-header online-menu-header max-[649px]:!grid-cols-[1fr_auto_1fr] max-[649px]:!items-center min-[650px]:!min-h-[82px] min-[650px]:!m-0 min-[650px]:!w-full min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#dcebd0] min-[650px]:!bg-white/85 min-[650px]:!p-[15px_18px] min-[650px]:!shadow-[0_12px_30px_rgba(61,75,55,0.1)]">
-            <div className="brand-lockup max-[649px]:!col-start-1 max-[649px]:!row-start-1 max-[649px]:!flex max-[649px]:!items-center max-[649px]:!justify-self-start min-[650px]:!flex min-[650px]:!gap-[13px]">
+        <div className="online-menu-sticky flex-none max-[649px]:!-mx-[18px] max-[649px]:!w-[calc(100%+36px)] max-[649px]:!px-[18px] max-[649px]:!pt-2 min-[650px]:!static min-[650px]:!m-0 min-[650px]:!w-auto min-[650px]:!bg-transparent min-[650px]:!p-0">
+          <header className="menu-header online-header online-menu-header grid min-w-0 w-full items-stretch gap-x-3 gap-y-2 max-[649px]:!grid-cols-[minmax(0,1fr)_auto] max-[649px]:!items-center min-[650px]:!grid-cols-[minmax(0,1fr)_auto] min-[650px]:!min-h-[82px] min-[650px]:!m-0 min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#dcebd0] min-[650px]:!bg-white/85 min-[650px]:!p-[15px_18px] min-[650px]:!shadow-[0_12px_30px_rgba(61,75,55,0.1)]">
+            <div className="brand-lockup flex items-center gap-2.5 max-[649px]:!col-start-1 max-[649px]:!row-start-1 max-[649px]:!justify-self-start min-[650px]:!col-start-1 min-[650px]:!row-start-1 min-[650px]:!gap-[13px]">
               <img
-                className="max-[649px]:!col-start-2 max-[649px]:!row-start-1 max-[649px]:!justify-self-center max-[649px]:!h-16 max-[649px]:!w-16 min-[650px]:!h-16 min-[650px]:!w-16 min-[650px]:!rounded-none min-[650px]:!bg-transparent min-[650px]:!object-contain"
+                className="max-[649px]:!col-auto max-[649px]:!row-auto max-[649px]:!h-[54px] max-[649px]:!w-[54px] min-[650px]:!h-16 min-[650px]:!w-16 min-[650px]:!rounded-none min-[650px]:!bg-transparent min-[650px]:!object-contain"
                 src="/logo.png"
                 alt=""
                 width="64"
                 height="64"
               />
-              <strong className="block max-[649px]:text-[1.25rem] max-[649px]:font-black max-[649px]:tracking-[-0.03em] max-[649px]:text-[#294b2d] min-[650px]:text-[1.8rem] min-[650px]:font-black min-[650px]:tracking-[-0.04em] min-[650px]:text-[#294b2d]">
+              <strong className="block max-[649px]:!hidden min-[650px]:text-[1.8rem] min-[650px]:font-black min-[650px]:tracking-[-0.04em] min-[650px]:text-[#294b2d]">
                 {copy.brand}
               </strong>
             </div>
-            <div className="header-meta max-[649px]:!col-start-3 max-[649px]:!row-start-1 max-[649px]:!items-center max-[649px]:!justify-self-end min-[650px]:!flex min-[650px]:!gap-2.5">
+            <div className="header-meta flex items-center gap-3 max-[649px]:!col-start-2 max-[649px]:!row-start-1 max-[649px]:!justify-self-end min-[650px]:!col-start-2 min-[650px]:!row-start-1 min-[650px]:!justify-self-end min-[650px]:!gap-2.5">
               {onlineOrderingEnabled && (
                 <button
-                  className="header-cart online-header-cart min-[650px]:!hidden"
+                  className="header-cart online-header-cart inline-flex items-center gap-1 rounded-xl border border-[#d8e9c3] bg-[#f7fbf2] px-[9px] py-[7px] text-[#5f8c25] min-[650px]:!hidden"
                   onClick={() => void openCart()}
                   aria-label={copy.cart}
                 >
@@ -822,32 +922,10 @@ export default function OnlineOrder() {
                   <strong>{count}</strong>
                 </button>
               )}
-              {(cartAvailabilityError || unavailableCartItems.length > 0) && (
-                <div className="order-pricing-notice" role="alert">
-                  <p>{copy.cartUnavailable}</p>
-                  <ul>
-                    {unavailableCartItems.map((entry, index) => (
-                      <li
-                        key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}
-                      >
-                        <span>
-                          {entry.kind === "item"
-                            ? copy.unavailableItem
-                            : copy.unavailableAddon}
-                          :{" "}
-                        </span>
-                        <strong className="cart-unavailable-name">
-                          {entry.name}
-                          {entry.addonName ? ` - ${entry.addonName}` : ""}
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <label className="locale-picker">
+              <label>
                 <span className="sr-only">{copy.language}</span>
                 <select
+                  className="min-w-[58px] rounded-[99px] border border-gray-200 bg-white p-2 text-black min-[650px]:!rounded-lg min-[650px]:!border-[#dbe7d1] min-[650px]:!bg-[#f7fbf3] min-[650px]:!text-[#253228]"
                   value={locale}
                   onChange={(event) => {
                     const next = event.target.value as Locale;
@@ -862,13 +940,15 @@ export default function OnlineOrder() {
               </label>
             </div>
           </header>
-          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2 py-2 text-center text-xs font-bold text-[#526052] max-[649px]:!py-1 max-[649px]:!text-[0.82rem] min-[650px]:mt-3 min-[650px]:!rounded-md min-[650px]:border min-[650px]:border-[#dcebd0] min-[650px]:bg-[#f3f8ed]">
-            <span className="text-[#315b34]">{copy.dineInOnlyNotice}</span>
-            <span aria-hidden="true">·</span>
-            <span className="max-[649px]:!text-[0.75rem] max-[649px]:!text-[#b42318] min-[650px]:!text-[#b42318]">
-              {copy.onlineOrderingComingSoon}
-            </span>
-          </div>
+          {!onlineOrderingEnabled && (
+            <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2 py-2 text-center text-xs font-bold text-[#526052] max-[649px]:!py-1 max-[649px]:!text-[0.82rem] min-[650px]:mt-3 min-[650px]:!rounded-md min-[650px]:border min-[650px]:border-[#dcebd0] min-[650px]:bg-[#f3f8ed]">
+              <span className="text-[#315b34]">{copy.dineInOnlyNotice}</span>
+              <span aria-hidden="true">·</span>
+              <span className="max-[649px]:!text-[0.75rem] max-[649px]:!text-[#b42318] min-[650px]:!text-[#b42318]">
+                {copy.onlineOrderingComingSoon}
+              </span>
+            </div>
+          )}
           <MobileCategoryTabs
             tabs={[
               { id: "all", label: copy.all },
@@ -883,10 +963,11 @@ export default function OnlineOrder() {
             onSelect={setCategory}
           />
         </div>
-        <nav
-          className="category-tabs !hidden min-[650px]:!sticky min-[650px]:!top-0 min-[650px]:!z-10 min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-x-auto min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
+        <div className="hidden min-[650px]:!block min-[650px]:!sticky min-[650px]:!top-0 min-[650px]:!z-10 min-[650px]:!self-start min-[650px]:!mt-[22px] min-[650px]:!w-full">
+          <nav
+            className="category-tabs !hidden min-[650px]:!flex min-[650px]:!w-full min-[650px]:!flex-nowrap min-[650px]:!gap-3 min-[650px]:!overflow-visible min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#c5d8b7] min-[650px]:!bg-[#edf4e9] min-[650px]:!p-3 min-[650px]:!shadow-[0_8px_22px_rgba(61,75,55,0.07)]"
           aria-label={copy.categories}
-        >
+          >
           <button
             aria-pressed={category === "all"}
             className="min-[650px]:[&::after]:!hidden min-[650px]:!flex-none min-[650px]:!rounded-md min-[650px]:!border min-[650px]:!border-[#a9c294] min-[650px]:!bg-white min-[650px]:!px-5 min-[650px]:!py-2.5 min-[650px]:!font-extrabold min-[650px]:!text-[#294b2d] min-[650px]:!shadow-[0_3px_8px_rgba(41,75,45,0.1)] min-[650px]:hover:!bg-[#dcefd0] min-[650px]:aria-pressed:!border-[#315b34] min-[650px]:aria-pressed:!bg-[#315b34] min-[650px]:aria-pressed:!text-white"
@@ -904,12 +985,13 @@ export default function OnlineOrder() {
               {label(entry.names)}
             </button>
           ))}
-        </nav>
-        <div className="online-layout min-[650px]:!block min-[650px]:!pt-[22px]">
-          <section>
+          </nav>
+        </div>
+        <div className="online-layout flex min-h-0 flex-1 flex-col overflow-hidden min-[650px]:!block min-[650px]:!overflow-visible min-[650px]:!pt-[22px]">
+          <section className="flex h-full min-h-0 flex-col">
             <div
               ref={menuGridRef}
-              className="menu-grid min-[650px]:!grid-cols-2 min-[650px]:!gap-4"
+              className="menu-grid grid min-h-0 flex-1 content-start gap-[18px] overflow-y-auto overscroll-contain px-1 pb-1 touch-auto max-[649px]:!touch-auto min-[650px]:!overflow-visible min-[650px]:!px-0 min-[650px]:!pb-6 min-[650px]:!grid-cols-2 min-[650px]:!gap-4"
             >
               {visibleItems.map((item) => {
                 const displayPrice = item.displayPrice ?? item.price;
@@ -939,29 +1021,25 @@ export default function OnlineOrder() {
                           : undefined
                       }
                       addLabel={
-                        item.unavailable
-                          ? copy.unavailable
-                          : onlineOrderingEnabled
-                            ? copy.add
-                            : copy.dineInOnlyNotice
+                        onlineOrderingEnabled ? copy.add : copy.dineInOnlyNotice
                       }
                       disabled={item.unavailable}
                       unavailable={item.unavailable}
-                      showAction={onlineOrderingEnabled}
+                      showAction={onlineOrderingEnabled && !item.unavailable}
                       onAdd={() =>
                         onlineOrderingEnabled &&
                         !item.unavailable &&
                         openItem(item)
                       }
                     />
-                    <article className="menu-card online-menu-card !hidden min-[650px]:!flex min-[650px]:!min-h-[154px] min-[650px]:!flex-row min-[650px]:!rounded-[18px] min-[650px]:!border-[#dbe7d1] min-[650px]:!shadow-[0_7px_20px_rgba(61,75,55,0.1)] min-[650px]:hover:-translate-y-0.5 min-[650px]:hover:shadow-[0_12px_26px_rgba(61,75,55,0.15)]">
+                    <article className="relative !hidden min-h-[154px] overflow-hidden rounded-[18px] border border-[#dbe7d1] bg-white shadow-[0_7px_20px_rgba(61,75,55,0.1)] transition-[box-shadow,border-color,background-color] duration-200 hover:shadow-[0_12px_26px_rgba(61,75,55,0.15)] min-[650px]:!flex min-[650px]:!flex-row">
                       <div
-                        className="dish-art min-[650px]:!h-[154px] min-[650px]:!w-[154px] min-[650px]:!flex-[0_0_154px]"
+                        className="grid h-[154px] w-[154px] flex-[0_0_154px] place-items-center bg-[linear-gradient(140deg,#eef4e8,#d9e9cd)] text-[3.7rem]"
                         aria-hidden="true"
                       >
                         {item.imageUrl ? (
                           <img
-                            className="min-[650px]:!h-full min-[650px]:!w-full min-[650px]:!object-contain"
+                            className="h-full w-full object-contain"
                             src={item.imageUrl}
                             alt=""
                           />
@@ -969,13 +1047,15 @@ export default function OnlineOrder() {
                           "🍽️"
                         )}
                       </div>
-                      <div className="menu-card-copy min-[650px]:!p-[15px_16px_14px]">
+                      <div className="flex min-w-0 flex-1 flex-col p-[15px_16px_14px]">
                         {(item.unavailable ||
                           item.recommended ||
                           item.popular ||
                           item.new ||
                           item.promotion) && (
-                          <span className="menu-badge">
+                          <span
+                            className={`self-start rounded-full bg-[#f4dfaf] px-2 py-1 text-[0.68rem] font-extrabold leading-none ${item.unavailable ? "!text-[#dc2626]" : "text-[#70521b]"}`}
+                          >
                             {item.unavailable
                               ? copy.unavailable
                               : item.recommended
@@ -987,35 +1067,27 @@ export default function OnlineOrder() {
                                     : copy.promotion}
                           </span>
                         )}
-                        <p className="menu-name">{label(item.names)}</p>
-                        <p className="menu-description">
+                        <p className="mt-1.5 [overflow-wrap:anywhere] text-[1.08rem] font-bold leading-[1.25] tracking-[-0.012em] text-[#253228]">
+                          {label(item.names)}
+                        </p>
+                        <p className="mt-[5px] line-clamp-2 overflow-hidden text-[0.83rem] text-[#718072]">
                           {label(item.description)}
                         </p>
-                        <div className="menu-card-footer">
-                          <strong>
+                        <div className="mt-auto flex items-center justify-between gap-3 pt-2.5">
+                          <strong className="text-[1.05rem] text-[#5b8c42]">
                             {displayPrice < item.price && (
-                              <small className="mr-1 line-through">
+                              <small className="mr-1 text-[0.75rem] line-through">
                                 {formatPrice(item.price, locale)}
                               </small>
                             )}
                             {formatPrice(displayPrice, locale)}
                           </strong>
-                          {onlineOrderingEnabled && (
+                          {onlineOrderingEnabled && !item.unavailable && (
                             <button
-                              disabled={item.unavailable}
-                              onClick={() =>
-                                !item.unavailable && openItem(item)
-                              }
+                              className="rounded-xl border-0 bg-[#2e4b2d] px-[13px] py-2 font-bold text-white transition-colors duration-200 hover:bg-[#42663a]"
+                              onClick={() => openItem(item)}
                             >
-                              <span
-                                className={
-                                  item.unavailable
-                                    ? "unavailable-label"
-                                    : undefined
-                                }
-                              >
-                                {item.unavailable ? copy.unavailable : copy.add}
-                              </span>
+                              <span>{copy.add}</span>
                             </button>
                           )}
                         </div>
@@ -1026,29 +1098,15 @@ export default function OnlineOrder() {
               })}
             </div>
           </section>
-          {onlineOrderingEnabled && (
-            <button
-              className="cart-fab min-[650px]:!inline-flex min-[650px]:!right-4 min-[650px]:!bottom-[120px] min-[650px]:!h-14 min-[650px]:!w-14 min-[650px]:!flex-col min-[650px]:!gap-0 min-[650px]:!rounded-full min-[650px]:!border-[3px] min-[650px]:!border-[#a9c294] min-[650px]:!bg-[#dcefd0] min-[650px]:!p-3.5 min-[650px]:!text-[#315b34] min-[650px]:!shadow-[0_10px_24px_rgba(61,75,55,0.2)]"
-              onClick={() => void openCart()}
-              aria-label={copy.cart}
-            >
-              <span aria-hidden="true">🛒</span>
-              <span className="min-[650px]:hidden">{copy.cart}</span>
-              {count > 0 && (
-                <strong className="min-[650px]:!bg-[#b42318] min-[650px]:!text-white">
-                  {count}
-                </strong>
-              )}
-            </button>
-          )}
           {onlineOrderingEnabled && cartOpen && (
             <div
-              className="cart-drawer-backdrop"
+              className="fixed inset-0 z-[55] bg-[rgba(24,36,26,0.36)] backdrop-blur-[3px]"
               onMouseDown={() => setCartOpen(false)}
+              onWheel={(event) => event.preventDefault()}
             />
           )}
           {onlineOrderingEnabled && cartOpen && (
-            <aside className="online-cart">
+            <OnlineCartDrawer>
               <CartPanelHeader
                 cartLabel={copy.cart}
                 count={count}
@@ -1056,23 +1114,29 @@ export default function OnlineOrder() {
                 total={formatPrice(total, locale)}
                 originalTotal={originalTotal}
                 isQuoteLoading={quoteLoading}
+                unavailableMessage={
+                  cartAvailabilityError || unavailableCartItems.length > 0
+                    ? copy.removeUnavailableItemsToUpdateTotal
+                    : undefined
+                }
                 closeLabel={copy.cancel}
                 onClose={() => setCartOpen(false)}
-                className="sm:!hidden"
+                className="max-[649px]:!-mx-6 max-[649px]:!-mt-6 sm:!hidden"
               />
-              <div className="cart-heading !hidden sm:!flex">
-                <div>
-                  <p className="eyebrow">{copy.cart}</p>
-                  <span>
+              <div className="!hidden items-center justify-between gap-3 bg-[linear-gradient(135deg,#eef6e8,#f8fbf5)] px-[21px] py-[21px_17px] sm:!flex">
+                <div className="shrink-0">
+                  <p className="eyebrow !m-0 !text-[1.1rem] !font-extrabold !normal-case !tracking-normal !text-[#253228]">{copy.cart}</p>
+                  <span className="whitespace-nowrap !text-[1.05rem] !font-bold !text-[#526052]">
                     {count} {copy.item}
                   </span>
                 </div>
-                <strong>
-                  {quoteLoading ? (
+                {!(cartAvailabilityError || unavailableCartItems.length > 0) && (
+                  <strong className="!text-[1.22rem] !text-[#3d7130]">
+                    {quoteLoading ? (
                     <span className="inline-block min-w-20 animate-pulse text-gray-300">
                       …
                     </span>
-                  ) : (
+                    ) : (
                     <>
                       {originalTotal && (
                         <del className="mr-2 text-sm font-normal text-gray-400">
@@ -1081,20 +1145,56 @@ export default function OnlineOrder() {
                       )}
                       {formatPrice(total, locale)}
                     </>
-                  )}
-                </strong>
+                    )}
+                  </strong>
+                )}
+                <button
+                  className="grid h-10 w-10 flex-none place-items-center rounded-full bg-[#eef3ea] p-0 text-2xl leading-none text-[#526052]"
+                  onClick={() => setCartOpen(false)}
+                  aria-label={copy.cancel}
+                >
+                  ×
+                </button>
               </div>
+              {(cartAvailabilityError || unavailableCartItems.length > 0) && (
+                <div className="mb-3 mt-3 block rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm leading-snug text-red-700 max-[649px]:border-[#f0b429] max-[649px]:bg-[#fff8e6] max-[649px]:text-[#7a4a00] sm:ml-6 sm:mr-[39px]" role="alert">
+                  <p className="font-bold">
+                    {copy.removeUnavailableItemsToUpdateTotal}
+                  </p>
+                  <ul className="mt-1 list-disc pl-5 text-[0.82rem]">
+                    {unavailableCartItems.map((entry, index) => (
+                      <li key={`${entry.kind}-${entry.name}-${entry.addonName}-${index}`}>
+                        {entry.kind === "item"
+                          ? copy.unavailableItem
+                          : copy.unavailableAddon}
+                        : {entry.name}
+                        {entry.addonName ? ` - ${entry.addonName}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {cart.length === 0 ? (
-                <p className="cart-empty">{copy.cartEmptyDescription}</p>
+            <p className="m-0 px-[22px] py-[22px] text-base leading-6 text-[#7d887c]">
+              {copy.cartEmptyDescription}
+            </p>
               ) : (
-                <div className="cart-lines">
+                <div ref={restoreCartFocus} className="cart-lines flex flex-1 flex-col gap-2 overflow-y-auto !px-0 min-[650px]:[scrollbar-gutter:stable]">
                   {cart.map((line) => {
                     const item = items.find(
                       (candidate) => candidate.id === line.itemId,
                     );
+                    const lineUnavailable = Boolean(
+                      item?.unavailable ||
+                        item?.addons.some(
+                          (addon) =>
+                            line.addonIds.includes(addon.id) && addon.unavailable,
+                        ),
+                    );
                     return (
                       <Fragment key={line.key}>
                         <CartLineItem
+                          lineKey={line.key}
                           name={item ? label(item.names) : ""}
                           price={formatPrice(
                             linePrice(line) * line.quantity,
@@ -1107,6 +1207,10 @@ export default function OnlineOrder() {
                                   locale,
                                 )
                               : undefined
+                          }
+                          unavailable={lineUnavailable}
+                          unavailableLabel={
+                            lineUnavailable ? copy.unavailable : undefined
                           }
                           quantity={line.quantity}
                           decreaseLabel={copy.decreaseQuantity}
@@ -1126,10 +1230,14 @@ export default function OnlineOrder() {
                           }}
                           onRemove={() => updateQuantity(line.key, 0)}
                         />
-                        <div className="cart-line !hidden sm:!flex">
-                          <div>
-                            <strong>{item ? label(item.names) : ""}</strong>
-                            <small className="line-price">
+                        <div
+                          className={`hidden items-center justify-between gap-4 border-b border-[#e8eee2] px-1 py-3 font-['Segoe_UI','Helvetica_Neue',Arial,sans-serif] sm:flex min-[650px]:!px-6 ${lineUnavailable ? "rounded-xl !border !border-red-300 bg-red-50" : ""}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <strong className="block [overflow-wrap:anywhere] !text-[1rem] !leading-[1.25] !text-[#29382c]">
+                              {item ? label(item.names) : ""}
+                            </strong>
+                            <small className="mt-[3px] block !text-[0.85rem] !font-bold !text-[#5f8c25]">
                               {lineOriginalPrice(line) > linePrice(line) && (
                                 <del className="mr-1 font-normal text-gray-400">
                                   {formatPrice(
@@ -1142,11 +1250,17 @@ export default function OnlineOrder() {
                                 linePrice(line) * line.quantity,
                                 locale,
                               )}
+                              {lineUnavailable && (
+                                <span className="ml-2 text-[0.78rem] font-bold text-red-600">
+                                  {copy.unavailable}
+                                </span>
+                              )}
                             </small>
                           </div>
-                          <div className="line-actions">
-                            <div className="line-quantity-actions">
+                          <div className="ml-auto flex items-center gap-4">
+                            <div className="flex items-center gap-2">
                               <button
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-[#d9e6d3] bg-white p-0 text-[1.2rem] leading-none text-[#426b38] min-[650px]:!h-8 min-[650px]:!w-8"
                                 type="button"
                                 aria-label={copy.decreaseQuantity}
                                 onClick={() =>
@@ -1157,6 +1271,7 @@ export default function OnlineOrder() {
                               </button>
                               <span>{line.quantity}</span>
                               <button
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-[#d9e6d3] bg-white p-0 text-[1.2rem] leading-none text-[#426b38] min-[650px]:!h-8 min-[650px]:!w-8"
                                 type="button"
                                 aria-label={copy.increaseQuantity}
                                 onClick={() =>
@@ -1166,9 +1281,9 @@ export default function OnlineOrder() {
                                 <span className="quantity-symbol">+</span>
                               </button>
                             </div>
-                            <div className="line-item-actions">
+                            <div className="flex items-center gap-1.5">
                               <button
-                                className="icon-button"
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-[#d9e6d3] bg-white p-0 text-[#426b38] min-[650px]:!h-8 min-[650px]:!w-8"
                                 type="button"
                                 aria-label={copy.customise}
                                 onClick={() => {
@@ -1177,18 +1292,18 @@ export default function OnlineOrder() {
                                   openItem(item, line);
                                 }}
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="m4 16.5-.8 4.3 4.3-.8L19.1 8.4l-3.5-3.5L4 16.5Z" />
                                   <path d="m13.8 6.7 3.5 3.5" />
                                 </svg>
                               </button>
                               <button
-                                className="cart-remove-button"
+                                className="inline-flex h-[27px] w-[27px] items-center justify-center rounded-full border border-red-200 bg-white p-0 text-red-600 min-[650px]:!h-8 min-[650px]:!w-8"
                                 type="button"
                                 aria-label={copy.remove}
                                 onClick={() => updateQuantity(line.key, 0)}
                               >
-                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <svg className="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6" />
                                 </svg>
                               </button>
@@ -1201,7 +1316,7 @@ export default function OnlineOrder() {
                 </div>
               )}
               <button
-                className="primary-button send-button"
+                className="flex w-full items-center justify-center rounded-xl bg-[#315b34] px-4 py-3 font-bold text-white shadow-[0_10px_18px_rgba(54,90,49,0.2)] transition-colors hover:bg-[#48743f] disabled:cursor-not-allowed disabled:opacity-50 min-[650px]:!mx-auto min-[650px]:!my-4 min-[650px]:!w-[calc(100%-48px)] min-[650px]:!px-14 max-[649px]:mt-2 max-[649px]:mb-[calc(32px+env(safe-area-inset-bottom))] max-[649px]:shadow-none"
                 disabled={
                   !cart.length ||
                   cartAvailabilityError ||
@@ -1215,61 +1330,69 @@ export default function OnlineOrder() {
                 {copy.continueOrder}
               </button>
               <button
-                className="cart-close !hidden sm:!grid"
+                className="!hidden"
                 onClick={() => setCartOpen(false)}
                 aria-label={copy.cancel}
               >
                 ×
               </button>
-            </aside>
+            </OnlineCartDrawer>
           )}
         </div>
         {selected && (
-          <div className="modal-backdrop" onMouseDown={closeItem}>
+          <div
+            className="modal-backdrop fixed inset-0 !z-[60] flex items-center justify-center bg-[rgba(24,36,26,0.48)] p-6 backdrop-blur-[6px] max-[649px]:items-end max-[649px]:p-0"
+            onMouseDown={closeItem}
+            onWheel={(event) => {
+              if (event.target === event.currentTarget) event.preventDefault();
+            }}
+          >
             <section
-              className={`customise-sheet${customiseSheetFull ? " is-full-height" : ""}`}
+              className={`customise-sheet relative z-[31] flex min-h-[320px] max-h-[min(88svh,760px)] w-full max-w-[560px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border border-white/80 bg-[#fffdf9] p-8 text-[#24312a] shadow-[0_26px_80px_rgba(24,38,25,0.24)] min-[650px]:!max-w-[520px] min-[650px]:!rounded-none max-[649px]:fixed max-[649px]:inset-x-0 max-[649px]:bottom-0 max-[649px]:min-h-0 max-[649px]:max-h-[92svh] max-[649px]:max-w-none max-[649px]:rounded-t-[25px] max-[649px]:px-[18px] max-[649px]:pb-[calc(96px+env(safe-area-inset-bottom))]${customiseSheetFull ? " is-full-height" : ""}`}
               ref={customiseSheetRef}
               role="dialog"
               aria-modal="true"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className="sheet-title">
+              <div className="sheet-title !flex !items-start !justify-between !gap-3">
                 <div>
                   <p className="eyebrow">{copy.customise}</p>
-                  <h2>{label(selected.names)}</h2>
+                  <h2 className="text-[clamp(1.4rem,4vw,1.8rem)] font-extrabold text-[#253228]">{label(selected.names)}</h2>
                 </div>
                 <button
-                  className="icon-button"
+                  className="icon-button !relative !grid !h-10 !w-10 !flex-none !place-items-center !rounded-full !border-0 !bg-[#eef3ea] !p-0 !text-[#526052] min-[650px]:!-top-1 max-[649px]:!h-12 max-[649px]:!w-12"
                   onClick={closeItem}
                   aria-label={copy.cancel}
                 >
-                  <span className="modal-close-symbol">×</span>
+                  <span className="modal-close-symbol relative -top-0.5 text-2xl leading-none">×</span>
                 </button>
               </div>
-              <div className="quantity-row">
+              <div className="quantity-row !flex !items-center !justify-between !gap-3 !border-y !border-[#edf0e9] !py-3 !font-bold !text-[#344535] !mb-2 !mt-0">
                 <span>{copy.quantity}</span>
-                <div className="stepper">
+                <div className="stepper !flex !items-center !gap-2">
                   <button
+                    className="!inline-flex !h-10 !w-10 !items-center !justify-center !rounded-full !border !border-[#dce7d7] !bg-white !p-0 !text-xl !leading-none !text-[#426b38]"
                     onClick={() =>
                       setQuantity((value) => Math.max(1, value - 1))
                     }
                   >
                     <span className="quantity-symbol">−</span>
                   </button>
-                  <strong>{quantity}</strong>
-                  <button onClick={() => setQuantity((value) => value + 1)}>
+                  <strong className="min-w-6 text-center text-xl font-bold text-[#29382c]">{quantity}</strong>
+                  <button className="!inline-flex !h-10 !w-10 !items-center !justify-center !rounded-full !border !border-[#dce7d7] !bg-white !p-0 !text-xl !leading-none !text-[#426b38]" onClick={() => setQuantity((value) => value + 1)}>
                     <span className="quantity-symbol">+</span>
                   </button>
                 </div>
               </div>
               {selected.variants.length > 0 && (
-                <fieldset>
-                  <legend>{copy.variant}</legend>
-                  <div className="choice-grid">
+                <fieldset className="!my-0 !border-0 !p-0">
+                  <legend className="!mb-3 !font-extrabold !text-[#344535]">{copy.variant}</legend>
+                  <div className="choice-grid !flex !flex-wrap !gap-2">
                     {selected.variants.map((choice) => (
                       <button
                         key={choice.id}
-                        className={variant === choice.id ? "selected" : ""}
+                        className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] transition-colors hover:border-[#88b477] hover:bg-[#eaf4e5] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${variant === choice.id ? "selected" : ""}`}
+                        aria-pressed={variant === choice.id}
                         onClick={() => setVariant(choice.id)}
                       >
                         {label(choice.names)}
@@ -1306,18 +1429,17 @@ export default function OnlineOrder() {
                     ];
                   });
                 return (
-                  <fieldset key={group.id}>
-                    <legend>
+                  <fieldset key={group.id} className="!my-5 !border-0 !p-0">
+                    <legend className="!mb-3 !font-extrabold !text-[#344535]">
                       {label(group.names)}
                       {group.required ? " *" : ""}
                     </legend>
-                    <div className="choice-grid">
+                    <div className="choice-grid !flex !flex-wrap !gap-2">
                       {group.options.map((option) => (
                         <button
                           key={option.id}
-                          className={
-                            selectedIds.includes(option.id) ? "selected" : ""
-                          }
+                          className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] transition-colors hover:border-[#88b477] hover:bg-[#eaf4e5] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${selectedIds.includes(option.id) ? "selected" : ""}`}
+                          aria-pressed={selectedIds.includes(option.id)}
                           onClick={() => choose(option.id)}
                         >
                           {label(option.names)}
@@ -1329,9 +1451,9 @@ export default function OnlineOrder() {
               })}
               {selected.type === "combo" &&
                 (selected.components?.length || 0) > 0 && (
-                  <fieldset className="combo-components-fieldset">
-                    <legend>{copy.comboComponents}</legend>
-                    <div className="component-list">
+                  <fieldset className="combo-components-fieldset !my-5 !border-0 !p-0">
+                    <legend className="!mb-3 !font-extrabold !text-[#344535]">{copy.comboComponents}</legend>
+                    <div className="grid gap-2.5">
                       {componentSelections.map((selection, index) => {
                         const component = selected.components?.find(
                           (entry) =>
@@ -1342,10 +1464,10 @@ export default function OnlineOrder() {
                         return (
                           <details
                             key={selection.componentId}
-                            className="component-card"
+                            className="overflow-hidden rounded-xl border border-[#dce7d7] bg-white"
                             open={index === 0}
                           >
-                            <summary>
+                            <summary className="!flex !cursor-pointer !items-center !justify-between !px-3 !py-2.5 !font-bold !text-[#344535]">
                               {label(component.names)}{" "}
                               {(selected.components?.filter(
                                 (entry) => entry.itemId === component.itemId,
@@ -1353,16 +1475,13 @@ export default function OnlineOrder() {
                                 ? index + 1
                                 : ""}
                             </summary>
-                            <div className="component-options">
-                              <div className="choice-grid">
+                            <div className="border-t border-[#edf2e9] p-3">
+                              <div className="choice-grid !flex !flex-wrap !gap-2">
                                 {component.noteOptions.map((choice) => (
                                   <button
                                     key={choice.id}
-                                    className={
-                                      selection.noteOptions.includes(choice.id)
-                                        ? "selected"
-                                        : ""
-                                    }
+                                    className={`rounded-full border border-[#dce7d7] bg-white px-[13px] py-[9px] text-[#627060] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${selection.noteOptions.includes(choice.id) ? "selected" : ""}`}
+                                    aria-pressed={selection.noteOptions.includes(choice.id)}
                                     onClick={() =>
                                       setComponentSelections((current) =>
                                         current.map((entry) =>
@@ -1393,6 +1512,7 @@ export default function OnlineOrder() {
                                 ))}
                               </div>
                               <textarea
+                                className="min-h-[64px] w-full resize-y rounded-lg border border-[#dce7d7] bg-white px-3 py-2 text-sm text-[#344535] focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                                 value={selection.note || ""}
                                 maxLength={40}
                                 placeholder={copy.notePlaceholder}
@@ -1415,9 +1535,9 @@ export default function OnlineOrder() {
                   </fieldset>
                 )}
               {selected.type !== "combo" && selected.addons.length > 0 && (
-                <fieldset>
-                  <legend>{copy.addons}</legend>
-                  <div className="addon-list">
+                <fieldset className="!my-5 !border-0 !p-0">
+                  <legend className="!mb-3 !font-extrabold !text-[#344535]">{copy.addons}</legend>
+                  <div className="!grid !grid-cols-1 !gap-2.5">
                     {selected.addons.map((addon) => {
                       const displayPrice =
                         addon.displayPrice ?? addon.priceExtra;
@@ -1425,9 +1545,8 @@ export default function OnlineOrder() {
                         <button
                           key={addon.id}
                           disabled={addon.unavailable}
-                          className={
-                            addonIds.includes(addon.id) ? "selected" : ""
-                          }
+                          className={`flex items-center justify-between gap-2 rounded-xl border border-[#dce7d7] bg-white px-[11px] py-2.5 text-left text-[#344535] disabled:cursor-not-allowed disabled:opacity-[0.55] aria-pressed:border-[#88b477] aria-pressed:bg-[#eaf4e5] aria-pressed:font-bold aria-pressed:text-[#31552e] ${addonIds.includes(addon.id) ? "selected" : ""}`}
+                          aria-pressed={addonIds.includes(addon.id)}
                           onClick={() =>
                             setAddonIds((old) =>
                               old.includes(addon.id)
@@ -1461,18 +1580,18 @@ export default function OnlineOrder() {
                   </div>
                 </fieldset>
               )}
-              <label className="note-field">
-                <span>{copy.note}</span>
+              <label className="grid gap-2 min-[650px]:mt-5">
+                <span className="mb-3 text-[0.9rem] font-bold tracking-[0.02em] text-[#344535]">{copy.note}</span>
                 <textarea
-                  className="focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
+                  className="min-h-[76px] resize-y rounded-xl border border-[#dce7d7] bg-white px-3 py-2.5 text-[0.95rem] text-[#344535] transition focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={note}
                   maxLength={40}
                   onFocus={(event) => scrollTextareaIntoView(event.currentTarget)}
                   onChange={(event) => setNote(event.target.value)}
                 />
               </label>
-              <div className="sheet-footer">
-                <strong>
+              <div className="mt-3 flex items-center justify-between gap-3 max-[649px]:mb-1">
+                <strong className="min-w-max !text-[1.25rem] !text-[#3d7130]">
                   {formatPrice(
                     quantity *
                       ((selected.displayPrice ?? selected.price) +
@@ -1486,7 +1605,10 @@ export default function OnlineOrder() {
                     locale,
                   )}
                 </strong>
-                <button className="primary-button" onClick={addToCart}>
+                <button
+                  className="primary-button !flex-1 !rounded-xl !bg-[#315b34] px-4 py-3 font-bold text-white transition-colors hover:!bg-[#42663a]"
+                  onClick={addToCart}
+                >
                   {editingLineKey ? copy.updateItem : copy.addToCart}
                 </button>
               </div>
@@ -1495,8 +1617,11 @@ export default function OnlineOrder() {
         )}
         {checkoutOpen && (
           <div
-            className="modal-backdrop fixed inset-0 z-30 flex items-center justify-center bg-black/45 p-6 max-[649px]:items-end max-[649px]:p-0"
+            className="modal-backdrop fixed inset-0 !z-[60] flex items-center justify-center bg-black/45 p-6 max-[649px]:items-end max-[649px]:p-0"
             onMouseDown={() => setCheckoutOpen(false)}
+            onWheel={(event) => {
+              if (event.target === event.currentTarget) event.preventDefault();
+            }}
           >
             <section
               className="checkout-card flex h-auto max-h-[min(88svh,760px)] w-full max-w-[560px] flex-col overflow-x-hidden overflow-y-auto bg-surface p-8 shadow-2xl max-[649px]:h-svh max-[649px]:max-h-svh max-[649px]:max-w-none max-[649px]:rounded-none max-[649px]:px-[18px] max-[649px]:pt-[22px] max-[649px]:pb-[calc(22px+env(safe-area-inset-bottom))]"
@@ -1504,43 +1629,48 @@ export default function OnlineOrder() {
               aria-modal="true"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <div className="sheet-title">
+              <div className="sheet-title !flex !items-start !justify-between !gap-3 min-[650px]:!items-center min-[650px]:!mb-6 max-[649px]:!items-start max-[649px]:!mb-5">
                 <div>
-                  <p className="eyebrow">{copy.checkout}</p>
+                  <h2 className="eyebrow !m-0 min-[650px]:!text-[1.6rem] min-[650px]:!font-extrabold min-[650px]:!normal-case min-[650px]:!tracking-normal min-[650px]:!leading-tight max-[649px]:!text-[1.75rem] max-[649px]:!font-extrabold max-[649px]:!normal-case max-[649px]:!tracking-normal max-[649px]:!leading-tight">
+                    {copy.checkout}
+                  </h2>
                 </div>
                 <button
-                  className="icon-button"
+                  className="icon-button !relative !grid !h-10 !w-10 !flex-none !place-items-center !rounded-full !border-0 !bg-[#eef3ea] !p-0 !text-[#526052] min-[650px]:!self-center"
                   onClick={() => setCheckoutOpen(false)}
                   aria-label={copy.cancel}
                 >
-                  <span className="checkout-close-symbol">×</span>
+                  <span className="checkout-close-symbol text-2xl leading-none">×</span>
                 </button>
               </div>
               {pricingChanged && (
-                <p className="order-pricing-notice" role="alert">
+                <p className="my-3 rounded-[10px] border border-[#f0b429] bg-[#fff8e6] px-3 py-2.5 text-[0.9rem] font-semibold text-[#7a4a00]" role="alert">
                   {copy.orderPricingChanged}
                 </p>
               )}
-              <div className="online-type checkout-order-type">
-                <span>{copy.orderType}</span>
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                <span className="mr-auto font-bold text-[#344535]">{copy.orderType}</span>
                 <button
                   type="button"
-                  className={type === "dine_in" ? "selected" : ""}
+                  className="rounded-full border border-[#dce7d7] bg-white px-3 py-2 text-sm font-bold text-[#627060] transition-colors aria-pressed:border-[#315b34] aria-pressed:bg-[#eaf4e5] aria-pressed:text-[#31552e]"
+                  aria-pressed={type === "dine_in"}
                   onClick={() => setType("dine_in")}
                 >
                   {copy.dineIn}
                 </button>
                 <button
                   type="button"
-                  className={type === "takeaway" ? "selected" : ""}
+                  className="rounded-full border border-[#dce7d7] bg-white px-3 py-2 text-sm font-bold text-[#627060] transition-colors aria-pressed:border-[#315b34] aria-pressed:bg-[#eaf4e5] aria-pressed:text-[#31552e]"
+                  aria-pressed={type === "takeaway"}
                   onClick={() => setType("takeaway")}
                 >
                   {copy.takeaway}
                 </button>
               </div>
-              <label>
+              <label className="max-[649px]:!grid max-[649px]:!gap-2 max-[649px]:!my-3 max-[649px]:!font-bold max-[649px]:!text-[#344535] min-[650px]:!grid min-[650px]:!gap-2 min-[650px]:!my-3 min-[650px]:!font-bold min-[650px]:!text-[#344535]">
                 {copy.phone} *
                 <input
+                  className="max-[649px]:!w-full max-[649px]:!rounded-xl max-[649px]:!border max-[649px]:!border-[#dce7d7] max-[649px]:!bg-white max-[649px]:!px-3 max-[649px]:!py-2.5 max-[649px]:!text-base max-[649px]:!text-[#253228] min-[650px]:!w-full min-[650px]:!max-w-full min-[650px]:!rounded-xl min-[650px]:!border min-[650px]:!border-[#dce7d7] min-[650px]:!bg-white min-[650px]:!px-3 min-[650px]:!py-2.5 min-[650px]:!text-base min-[650px]:!text-[#253228] min-[650px]:focus:!border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={customer.phone}
                   required
                   inputMode="tel"
@@ -1549,36 +1679,39 @@ export default function OnlineOrder() {
                   }
                 />
               </label>
-              <label>
+              <label className="max-[649px]:!grid max-[649px]:!gap-2 max-[649px]:!my-3 max-[649px]:!font-bold max-[649px]:!text-[#344535] min-[650px]:!grid min-[650px]:!gap-2 min-[650px]:!my-3 min-[650px]:!font-bold min-[650px]:!text-[#344535]">
                 {copy.customerName}
                 <input
+                  className="max-[649px]:!w-full max-[649px]:!rounded-xl max-[649px]:!border max-[649px]:!border-[#dce7d7] max-[649px]:!bg-white max-[649px]:!px-3 max-[649px]:!py-2.5 max-[649px]:!text-base max-[649px]:!text-[#253228] min-[650px]:!w-full min-[650px]:!max-w-full min-[650px]:!rounded-xl min-[650px]:!border min-[650px]:!border-[#dce7d7] min-[650px]:!bg-white min-[650px]:!px-3 min-[650px]:!py-2.5 min-[650px]:!text-base min-[650px]:!text-[#253228] min-[650px]:focus:!border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={customer.name}
                   onChange={(event) =>
                     setCustomer({ ...customer, name: event.target.value })
                   }
                 />
               </label>
-              <label>
+              <label className="max-[649px]:!grid max-[649px]:!gap-2 max-[649px]:!my-3 max-[649px]:!font-bold max-[649px]:!text-[#344535] min-[650px]:!grid min-[650px]:!gap-2 min-[650px]:!my-3 min-[650px]:!font-bold min-[650px]:!text-[#344535]">
                 {copy.address}
                 <textarea
+                  className="min-h-[92px] w-full resize-y rounded-xl border border-[#dce7d7] bg-white px-3 py-2.5 text-base text-[#253228] focus:border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   value={customer.address}
                   onChange={(event) =>
                     setCustomer({ ...customer, address: event.target.value })
                   }
                 />
               </label>
-              <label>
+              <label className="max-[649px]:!grid max-[649px]:!gap-2 max-[649px]:!my-3 max-[649px]:!font-bold max-[649px]:!text-[#344535] min-[650px]:!grid min-[650px]:!gap-2 min-[650px]:!my-3 min-[650px]:!font-bold min-[650px]:!text-[#344535]">
                 {copy.pickupTime}
                 <input
+                  className="max-[649px]:!w-full max-[649px]:!rounded-xl max-[649px]:!border max-[649px]:!border-[#dce7d7] max-[649px]:!bg-white max-[649px]:!px-3 max-[649px]:!py-2.5 max-[649px]:!text-base max-[649px]:!text-[#253228] min-[650px]:!w-full min-[650px]:!max-w-full min-[650px]:!rounded-xl min-[650px]:!border min-[650px]:!border-[#dce7d7] min-[650px]:!bg-white min-[650px]:!px-3 min-[650px]:!py-2.5 min-[650px]:!text-base min-[650px]:!text-[#253228] min-[650px]:focus:!border-[#315b34] focus:outline-none focus:ring-2 focus:ring-[#8ac545]/30"
                   type="datetime-local"
                   value={pickupAt}
                   min={taipeiInputValue(new Date())}
                   onChange={(event) => setPickupAt(event.target.value)}
                 />
               </label>
-              <div className="turnstile-slot" />
+              <div className="turnstile-slot flex min-h-[65px] items-center justify-center overflow-hidden" />
               <button
-                className="primary-button !bg-primary !text-primary-foreground"
+                className="mt-2 w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground transition-colors hover:bg-[#48743f] disabled:cursor-not-allowed disabled:opacity-50 max-[649px]:!mb-12"
                 disabled={
                   !cart.length ||
                   !customer.phone.trim() ||
@@ -1594,6 +1727,20 @@ export default function OnlineOrder() {
           </div>
         )}
       </main>
+      {onlineOrderingEnabled && !cartOpen && !selected && !checkoutOpen && (
+        <button
+          className="fixed bottom-[22px] right-4 z-[50] hidden items-center justify-center rounded-full border-[3px] border-[#a9c294] bg-[#dcefd0] p-3.5 text-[#315b34] shadow-[0_10px_24px_rgba(61,75,55,0.2)] transition-[background,color] duration-200 hover:bg-white hover:text-[#315b34] min-[650px]:inline-flex min-[650px]:h-14 min-[650px]:w-14"
+          onClick={() => void openCart()}
+          aria-label={copy.cart}
+        >
+          <span className="relative -top-0.5 text-[1.15rem]" aria-hidden="true">🛒</span>
+          {count > 0 && (
+            <strong className="absolute right-[-5px] top-[-5px] grid h-[23px] min-w-[23px] place-items-center rounded-full bg-[#b42318] px-1 text-[0.75rem] leading-none text-white">
+              {count}
+            </strong>
+          )}
+        </button>
+      )}
       <MobileStoreFooter
         name={storeFooter.name}
         hoursLabel={copy.businessHours}
@@ -1601,6 +1748,7 @@ export default function OnlineOrder() {
         phone={storeFooter.phone}
         address={storeFooter.address}
         copyright={storeFooter.copyright}
+        mobileClassName="max-[649px]:!p-0 max-[649px]:!px-2 max-[649px]:!text-[11px] max-[649px]:!leading-4"
       />
     </>
   );
